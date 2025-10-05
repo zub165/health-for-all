@@ -48,6 +48,18 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
     reset,
   } = useForm<Patient>({
     resolver: yupResolver(schema),
+    defaultValues: {
+      name: '',
+      email: '',
+      phoneNumber: '',
+      age: 0,
+      gender: 'Male',
+      bloodGroup: 'A+',
+      pastMedicalHistory: '',
+      allergies: '',
+      familyHistory: '',
+      medicationList: '',
+    },
   });
 
   const onSubmit = async (data: Patient) => {

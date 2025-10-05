@@ -24,8 +24,9 @@ export const getApiBaseUrl = (): string | null => {
     // In production but no backend configured, use demo mode
     return API_CONFIG.DEMO;
   } else {
-    // In development, try to use Django backend
-    return API_CONFIG.DEVELOPMENT;
+    // In development, check if backend is available
+    // For now, always use demo mode to avoid connection errors
+    return API_CONFIG.DEMO;
   }
 };
 
