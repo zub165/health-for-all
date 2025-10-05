@@ -37,7 +37,7 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build"
   },
-  "homepage": "https://yourusername.github.io/health-for-all",
+  "homepage": "https://zub165.github.io/health-for-all",
   "eslintConfig": {
     "extends": [
       "react-app",
