@@ -21,12 +21,11 @@ export const getApiBaseUrl = (): string | null => {
   if (isProduction && isBackendAvailable) {
     return process.env.REACT_APP_BACKEND_URL || null;
   } else if (isProduction) {
-    // In production but no backend configured, use demo mode
-    return API_CONFIG.DEMO;
+    // In production, use your external Django backend
+    return 'http://208.109.215.53:3015/api';
   } else {
-    // In development, check if backend is available
-    // For now, always use demo mode to avoid connection errors
-    return API_CONFIG.DEMO;
+    // In development, use local Django backend
+    return API_CONFIG.DEVELOPMENT;
   }
 };
 
