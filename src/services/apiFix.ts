@@ -77,10 +77,6 @@ export const apiFixService = {
         console.log(`Attempt ${attempt} to fetch patients...`);
         
         const response = await api.get('/patients/', {
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-          },
           timeout: 10000,
         });
 
@@ -112,8 +108,6 @@ export const apiFixService = {
         method: 'GET',
         headers: {
           Accept: 'application/json',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
         },
         mode: 'cors',
         credentials: 'omit',
