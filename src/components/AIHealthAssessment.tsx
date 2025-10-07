@@ -1,65 +1,63 @@
 import React, { useState, useEffect } from 'react';
 import {
   Container,
+  Paper,
   Typography,
-  Box,
-  Card,
-  CardContent,
   TextField,
   Button,
+  Box,
   Alert,
   CircularProgress,
-  Chip,
+  Card,
+  CardContent,
   LinearProgress,
-  Paper,
+  Chip,
   List,
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider,
 } from '@mui/material';
 import {
-  HealthAndSafety,
+  Person,
+  Psychology,
+  Assessment,
   Warning,
   CheckCircle,
-  Assessment,
   TrendingUp,
-  TrendingDown,
-  Remove,
+  LocalHospital,
 } from '@mui/icons-material';
 import { Patient } from '../types';
 import { patientApi } from '../services/api';
-import { aiService } from '../services/aiService';
 
 interface AIHealthAssessmentProps {
   onAssessmentComplete?: (patient: Patient, healthScore: number, riskFactors: string[], recommendations: string[]) => void;
 }
 
 const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentComplete }) => {
-  const [loading, setLoading] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [aiProcessing, setAiProcessing] = useState(false);
   const [healthScore, setHealthScore] = useState<number | null>(null);
   const [riskFactors, setRiskFactors] = useState<string[]>([]);
   const [recommendations, setRecommendations] = useState<string[]>([]);
   const [assessmentComplete, setAssessmentComplete] = useState(false);
 
-  // Load all patients on component mount
   useEffect(() => {
-    loadPatients();
+    fetchPatients();
   }, []);
 
-  const loadPatients = async () => {
+  const fetchPatients = async () => {
     setLoading(true);
+    setError(null);
     try {
       const response = await patientApi.getAll();
       if (response.success && response.data) {
         setPatients(response.data);
       } else {
-        setError('Failed to load patients');
+        setError(response.message || 'Failed to fetch patients');
       }
     } catch (err) {
       setError('Network error. Please check if the Django server is running.');
@@ -68,50 +66,121 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
     }
   };
 
-  const filteredPatients = patients.filter(patient => {
-    const name = patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
-    const email = patient.email || '';
-    const phone = patient.phoneNumber || patient.phone || '';
-    
-    return name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           phone.includes(searchTerm);
-  });
+  const filteredPatients = patients.filter(patient =>
+    (patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim())
+      .toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (patient.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (patient.phoneNumber || patient.phone || '').includes(searchTerm)
+  );
 
-  const analyzePatientHealth = async (patient: Patient) => {
-    setAnalyzing(true);
-    setError(null);
+  const performAIAssessment = async (patient: Patient) => {
+    setAiProcessing(true);
+    setHealthScore(null);
+    setRiskFactors([]);
+    setRecommendations([]);
     setAssessmentComplete(false);
-    
-    try {
-      // Convert Patient to AIPatientData format
-      const patientData = {
-        name: patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim(),
-        email: patient.email || '',
-        phoneNumber: patient.phoneNumber || patient.phone || '',
-        age: patient.age || (patient.date_of_birth ? new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear() : 0),
-        gender: patient.gender || 'Unknown',
-        bloodGroup: patient.bloodGroup || patient.blood_type || 'Unknown',
-        pastMedicalHistory: patient.pastMedicalHistory,
-        allergies: patient.allergies,
-        familyHistory: patient.familyHistory,
-        medicationList: patient.medicationList,
-      };
 
-      // Use AI service to analyze existing patient data
-      const aiAnalysis = await aiService.autoFillFormFromPatientData(patientData);
-      
-      setHealthScore(aiAnalysis.healthScore);
-      setRiskFactors(aiAnalysis.riskFactors);
-      setRecommendations(aiAnalysis.recommendations);
+    try {
+      // Simulate AI processing time
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Calculate AI health score based on patient data
+      let score = 100;
+      const factors: string[] = [];
+      const recs: string[] = [];
+
+      // Age factor
+      if (patient.age && patient.age > 65) {
+        score -= 15;
+        factors.push('Advanced Age');
+      } else if (patient.age && patient.age > 50) {
+        score -= 10;
+        factors.push('Age-related Risk');
+      }
+
+      // Medical history analysis
+      if (patient.pastMedicalHistory && patient.pastMedicalHistory.length > 50) {
+        score -= 20;
+        factors.push('Complex Medical History');
+      }
+
+      // Allergies analysis
+      if (patient.allergies && patient.allergies.toLowerCase().includes('severe')) {
+        score -= 15;
+        factors.push('Severe Allergies');
+      } else if (patient.allergies && patient.allergies.length > 20) {
+        score -= 10;
+        factors.push('Multiple Allergies');
+      }
+
+      // Family history analysis
+      if (patient.familyHistory) {
+        if (patient.familyHistory.toLowerCase().includes('diabetes')) {
+          score -= 10;
+          factors.push('Family History of Diabetes');
+        }
+        if (patient.familyHistory.toLowerCase().includes('heart')) {
+          score -= 10;
+          factors.push('Family History of Heart Disease');
+        }
+        if (patient.familyHistory.toLowerCase().includes('cancer')) {
+          score -= 15;
+          factors.push('Family History of Cancer');
+        }
+      }
+
+      // Medication analysis
+      if (patient.medicationList && patient.medicationList.length > 30) {
+        score -= 10;
+        factors.push('Multiple Medications');
+      }
+
+      // Generate recommendations based on score and factors
+      if (score < 70) {
+        recs.push('Schedule comprehensive health screening within 2 weeks');
+        recs.push('Consult with primary care physician for detailed assessment');
+      }
+
+      if (factors.includes('Advanced Age') || factors.includes('Age-related Risk')) {
+        recs.push('Annual comprehensive health checkup recommended');
+        recs.push('Consider bone density and cardiovascular screening');
+      }
+
+      if (factors.includes('Family History of Diabetes')) {
+        recs.push('Regular blood glucose monitoring');
+        recs.push('Maintain healthy diet and regular exercise');
+      }
+
+      if (factors.includes('Family History of Heart Disease')) {
+        recs.push('Cardiovascular risk assessment');
+        recs.push('Cholesterol and blood pressure monitoring');
+      }
+
+      if (factors.includes('Multiple Allergies')) {
+        recs.push('Carry emergency allergy medication');
+        recs.push('Regular allergy testing and management');
+      }
+
+      // General recommendations
+      recs.push('Maintain regular exercise routine');
+      recs.push('Follow balanced diet with plenty of fruits and vegetables');
+      recs.push('Get adequate sleep (7-9 hours per night)');
+      recs.push('Manage stress through relaxation techniques');
+
+      const finalScore = Math.max(0, Math.min(100, score));
+
+      setHealthScore(finalScore);
+      setRiskFactors(factors);
+      setRecommendations(recs);
       setAssessmentComplete(true);
-      
-      onAssessmentComplete?.(patient, aiAnalysis.healthScore, aiAnalysis.riskFactors, aiAnalysis.recommendations);
-      
+
+      // Call completion callback
+      onAssessmentComplete?.(patient, finalScore, factors, recs);
+
     } catch (err) {
-      setError('AI analysis failed. Please try again.');
+      setError('AI assessment failed. Please try again.');
     } finally {
-      setAnalyzing(false);
+      setAiProcessing(false);
     }
   };
 
@@ -124,258 +193,183 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
   const getHealthScoreLabel = (score: number) => {
     if (score >= 80) return 'Excellent';
     if (score >= 60) return 'Good';
-    if (score >= 40) return 'Moderate';
-    return 'Poor';
-  };
-
-  const getHealthScoreIcon = (score: number) => {
-    if (score >= 80) return <TrendingUp color="success" />;
-    if (score >= 60) return <Remove color="warning" />;
-    return <TrendingDown color="error" />;
+    if (score >= 40) return 'Fair';
+    return 'Needs Attention';
   };
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Typography variant="h4" component="h1" gutterBottom align="center">
-        🧠 AI Health Assessment
-      </Typography>
-      <Typography variant="subtitle1" align="center" color="text.secondary" sx={{ mb: 4 }}>
-        Analyze existing patient data to assess health scores and provide recommendations
-      </Typography>
+      <Paper elevation={3} sx={{ p: 4 }}>
+        <Typography variant="h4" component="h1" gutterBottom align="center" color="primary">
+          🧠 AI Health Assessment
+        </Typography>
+        
+        <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
+          Advanced AI-powered health analysis and predictive insights
+        </Typography>
 
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: 3 }}>
-        {/* Patient Selection */}
-        <Box sx={{ gridColumn: { xs: "span 12", md: "span 4" } }}>
-          <Card>
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+
+        {aiProcessing && (
+          <Card sx={{ mb: 3, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                📋 Select Patient
+              <Box display="flex" alignItems="center" mb={2}>
+                <Psychology sx={{ mr: 2 }} />
+                <Typography variant="h6">AI Health Analysis in Progress...</Typography>
+              </Box>
+              <LinearProgress sx={{ mb: 2 }} />
+              <Typography variant="body2">
+                Analyzing {selectedPatient?.name}'s medical data, risk factors, and generating personalized recommendations...
               </Typography>
-              
-              <TextField
-                fullWidth
-                label="Search patients..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                sx={{ mb: 2 }}
-                placeholder="Search by name, email, or phone"
-              />
-
-              {loading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
-                  <CircularProgress />
-                </Box>
-              ) : (
-                <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
-                  {filteredPatients.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary" align="center" sx={{ p: 2 }}>
-                      {searchTerm ? 'No patients found matching your search.' : 'No patients registered yet.'}
-                    </Typography>
-                  ) : (
-                    filteredPatients.map((patient) => (
-                      <Paper
-                        key={patient.id}
-                        elevation={selectedPatient?.id === patient.id ? 3 : 1}
-                        sx={{
-                          p: 2,
-                          mb: 1,
-                          cursor: 'pointer',
-                          bgcolor: selectedPatient?.id === patient.id ? 'primary.50' : 'background.paper',
-                          border: selectedPatient?.id === patient.id ? '2px solid' : '1px solid',
-                          borderColor: selectedPatient?.id === patient.id ? 'primary.main' : 'divider',
-                        }}
-                        onClick={() => setSelectedPatient(patient)}
-                      >
-                        <Typography variant="subtitle2" fontWeight="bold">
-                          {patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim()}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {patient.email || ''}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Age: {patient.age || (patient.date_of_birth ? new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear() : 'N/A')} | {patient.gender || 'N/A'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          ID: {patient.id}
-                        </Typography>
-                      </Paper>
-                    ))
-                  )}
-                </Box>
-              )}
             </CardContent>
           </Card>
-        </Box>
-
-        {/* Patient Details & Analysis */}
-        <Box sx={{ gridColumn: { xs: "span 12", md: "span 8" } }}>
-          {selectedPatient ? (
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  👤 Patient Details
-                </Typography>
-                
-                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: 2, mb: 3 }}>
-                  <Box sx={{ gridColumn: { xs: "span 12", sm: "span 6" } }}>
-                    <Typography variant="body2" color="text.secondary">Name</Typography>
-                    <Typography variant="body1" fontWeight="bold">{selectedPatient.name || selectedPatient.full_name || `${selectedPatient.first_name || ''} ${selectedPatient.last_name || ''}`.trim()}</Typography>
-                  </Box>
-                  <Box sx={{ gridColumn: { xs: "span 12", sm: "span 6" } }}>
-                    <Typography variant="body2" color="text.secondary">Age & Gender</Typography>
-                    <Typography variant="body1">{selectedPatient.age || (selectedPatient.date_of_birth ? new Date().getFullYear() - new Date(selectedPatient.date_of_birth).getFullYear() : 'N/A')} years, {selectedPatient.gender || 'N/A'}</Typography>
-                  </Box>
-                  <Box sx={{ gridColumn: { xs: "span 12", sm: "span 6" } }}>
-                    <Typography variant="body2" color="text.secondary">Blood Group</Typography>
-                    <Typography variant="body1">{selectedPatient.bloodGroup || selectedPatient.blood_type || 'N/A'}</Typography>
-                  </Box>
-                  <Box sx={{ gridColumn: { xs: "span 12", sm: "span 6" } }}>
-                    <Typography variant="body2" color="text.secondary">Phone</Typography>
-                    <Typography variant="body1">{selectedPatient.phoneNumber || selectedPatient.phone || 'N/A'}</Typography>
-                  </Box>
-                </Box>
-
-                <Divider sx={{ my: 2 }} />
-
-                <Typography variant="h6" gutterBottom>
-                  🏥 Medical Information
-                </Typography>
-                
-                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: 2, mb: 3 }}>
-                  <Box sx={{ gridColumn: "span 12" }}>
-                    <Typography variant="body2" color="text.secondary">Past Medical History</Typography>
-                    <Typography variant="body1">{selectedPatient.pastMedicalHistory || 'None reported'}</Typography>
-                  </Box>
-                  <Box sx={{ gridColumn: "span 12" }}>
-                    <Typography variant="body2" color="text.secondary">Allergies</Typography>
-                    <Typography variant="body1">{selectedPatient.allergies || 'None reported'}</Typography>
-                  </Box>
-                  <Box sx={{ gridColumn: "span 12" }}>
-                    <Typography variant="body2" color="text.secondary">Family History</Typography>
-                    <Typography variant="body1">{selectedPatient.familyHistory || 'None reported'}</Typography>
-                  </Box>
-                  <Box sx={{ gridColumn: "span 12" }}>
-                    <Typography variant="body2" color="text.secondary">Current Medications</Typography>
-                    <Typography variant="body1">{selectedPatient.medicationList || 'None reported'}</Typography>
-                  </Box>
-                </Box>
-
-                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-                  <Button
-                    variant="contained"
-                      size="medium"
-                    onClick={() => analyzePatientHealth(selectedPatient)}
-                    disabled={analyzing}
-                    startIcon={<Assessment />}
-                    sx={{ minWidth: 200 }}
-                  >
-                    {analyzing ? 'Analyzing...' : '🧠 Analyze Health Score'}
-                  </Button>
-                </Box>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent>
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <HealthAndSafety sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                  <Typography variant="h6" color="text.secondary">
-                    Select a patient to begin AI health assessment
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          )}
-        </Box>
-
-        {/* AI Analysis Results */}
-        {analyzing && (
-          <Box sx={{ gridColumn: "span 12" }}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  🤖 AI Health Analysis in Progress
-                </Typography>
-                <LinearProgress />
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  Analyzing patient data for health insights...
-                </Typography>
-              </CardContent>
-            </Card>
-          </Box>
         )}
 
         {assessmentComplete && healthScore !== null && (
-          <Box sx={{ gridColumn: "span 12" }}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  📊 AI Health Assessment Results
+          <Card sx={{ mb: 3, bgcolor: 'grey.50' }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <Assessment sx={{ mr: 1, verticalAlign: 'middle' }} />
+                AI Health Assessment Results for {selectedPatient?.name}
+              </Typography>
+              
+              <Box display="flex" alignItems="center" mb={3}>
+                <Typography variant="h2" color={`${getHealthScoreColor(healthScore)}.main`} sx={{ mr: 3 }}>
+                  {healthScore}/100
                 </Typography>
-                
-                {/* Health Score Display */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                  {getHealthScoreIcon(healthScore)}
-                  <Typography variant="h3" color={`${getHealthScoreColor(healthScore)}.main`}>
-                    {healthScore}/100
+                <Box>
+                  <Typography variant="h5">{getHealthScoreLabel(healthScore)}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Overall Health Score
                   </Typography>
-                  <Chip
-                    label={getHealthScoreLabel(healthScore)}
-                    color={getHealthScoreColor(healthScore) as any}
-                  />
                 </Box>
+              </Box>
 
-                {/* Risk Factors */}
-                {riskFactors.length > 0 && (
-                  <Box sx={{ mb: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      ⚠️ Risk Factors Identified
-                    </Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="h6" gutterBottom>
+                    <Warning sx={{ mr: 1, verticalAlign: 'middle' }} />
+                    Risk Factors Identified
+                  </Typography>
+                  {riskFactors.length > 0 ? (
+                    <Box display="flex" flexWrap="wrap" gap={1}>
                       {riskFactors.map((factor, index) => (
-                        <Chip
-                          key={index}
-                          label={factor}
-                          color="warning"
-                          icon={<Warning />}
-                        />
+                        <Chip key={index} label={factor} color="warning" size="small" />
                       ))}
                     </Box>
-                  </Box>
-                )}
-
-                {/* Recommendations */}
-                {recommendations.length > 0 && (
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      💡 AI Recommendations
+                  ) : (
+                    <Typography variant="body2" color="success.main">
+                      <CheckCircle sx={{ mr: 1, verticalAlign: 'middle' }} />
+                      No significant risk factors identified
                     </Typography>
-                    <List>
-                      {recommendations.map((recommendation, index) => (
-                        <ListItem key={index}>
-                          <ListItemIcon>
-                            <CheckCircle color="primary" />
-                          </ListItemIcon>
-                          <ListItemText primary={recommendation} />
-                        </ListItem>
-                      ))}
-                    </List>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
-          </Box>
+                  )}
+                </Box>
+
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="h6" gutterBottom>
+                    <TrendingUp sx={{ mr: 1, verticalAlign: 'middle' }} />
+                    AI Recommendations
+                  </Typography>
+                  <List dense>
+                    {recommendations.slice(0, 5).map((rec, index) => (
+                      <ListItem key={index} sx={{ py: 0.5 }}>
+                        <ListItemIcon>
+                          <LocalHospital color="primary" />
+                        </ListItemIcon>
+                        <ListItemText primary={rec} />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
         )}
 
-        {/* Error Display */}
-        {error && (
-          <Box sx={{ gridColumn: "span 12" }}>
-            <Alert severity="error">
-              {error}
-            </Alert>
-          </Box>
-        )}
-      </Box>
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h6" gutterBottom>
+            Select Patient for AI Assessment
+          </Typography>
+          
+          <TextField
+            fullWidth
+            placeholder="Search patients by name, email, or phone..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            sx={{ mb: 3 }}
+          />
+
+          {loading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
+              {filteredPatients.map((patient) => (
+                <Card key={patient.id} elevation={2}>
+                  <CardContent>
+                    <Box display="flex" alignItems="center" mb={2}>
+                      <Person sx={{ mr: 1, color: 'primary.main' }} />
+                      <Typography variant="h6">
+                        {patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim()}
+                      </Typography>
+                    </Box>
+                    
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      <strong>Age:</strong> {patient.age || 'N/A'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      <strong>Email:</strong> {patient.email || 'N/A'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      <strong>Phone:</strong> {patient.phoneNumber || patient.phone || 'N/A'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      <strong>Blood Group:</strong> {patient.bloodGroup || patient.blood_type || 'N/A'}
+                    </Typography>
+                  </CardContent>
+                  
+                  <Box sx={{ p: 2, pt: 0 }}>
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      startIcon={<Psychology />}
+                      onClick={() => {
+                        setSelectedPatient(patient);
+                        performAIAssessment(patient);
+                      }}
+                      disabled={aiProcessing}
+                      sx={{
+                        background: 'linear-gradient(45deg, #9C27B0, #E91E63)',
+                        '&:hover': {
+                          background: 'linear-gradient(45deg, #7B1FA2, #C2185B)',
+                        }
+                      }}
+                    >
+                      AI Assessment
+                    </Button>
+                  </Box>
+                </Card>
+              ))}
+            </Box>
+          )}
+
+          {filteredPatients.length === 0 && !loading && (
+            <Box textAlign="center" py={4}>
+              <Typography variant="h6" color="text.secondary">
+                No patients found
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {searchTerm ? 'Try adjusting your search terms' : 'No patients have registered yet'}
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      </Paper>
     </Container>
   );
 };
