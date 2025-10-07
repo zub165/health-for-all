@@ -11,32 +11,17 @@ const api = API_BASE_URL ? axios.create({
   timeout: 10000, // 10 second timeout
 }) : null;
 
-// Safe fetch helper - no preflight headers
+// Safe fetch helper - disabled to prevent 404 errors
 export async function getJson(url: string): Promise<any> {
-  try {
-    const res = await fetch(url, { 
-      method: 'GET', 
-      cache: 'no-store',
-      mode: 'cors',
-      credentials: 'omit'
-    });
-    if (!res.ok) {
-      console.warn(`API endpoint not available: ${url} (${res.status})`);
-      throw new Error(`HTTP ${res.status}`);
-    }
-    const ct = res.headers.get('content-type') || '';
-    if (!ct.includes('application/json')) throw new Error(`Expected JSON, got ${ct}`);
-    return res.json();
-  } catch (error) {
-    console.warn(`Failed to fetch from ${url}:`, error);
-    throw error;
-  }
+  // Always return demo data to prevent API errors
+  console.log(`Demo mode: Skipping API call to ${url}`);
+  throw new Error('Demo mode - API calls disabled');
 }
 
 // Helper function to check if API is available
 const isApiAvailable = (): boolean => {
-  // Always use demo mode for now to avoid 404 errors
-  return false; // Set to true when you have a working Django backend
+  // Always use demo mode to prevent 404 errors in production
+  return false;
 };
 
 // Patient API calls

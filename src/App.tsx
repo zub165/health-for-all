@@ -70,7 +70,11 @@ function App() {
                 Health for All Fair
               </Typography>
               {currentView !== 'home' && (
-                <Button color="inherit" onClick={handleBackToHome}>
+                <Button 
+                  color="inherit" 
+                  onClick={handleBackToHome}
+                  aria-label="Return to home page"
+                >
                   Home
                 </Button>
               )}
