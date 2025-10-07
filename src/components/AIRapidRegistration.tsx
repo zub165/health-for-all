@@ -158,7 +158,32 @@ const AIRapidRegistration: React.FC<AIRapidRegistrationProps> = ({ onComplete })
         
         // Send AI-generated email summary
         try {
-          await emailService.sendPatientSummary(aiData, aiVitals, aiRecommendations);
+          const emailData = {
+            to: aiData.email || '',
+            subject: `AI Health Assessment - ${aiData.name}`,
+            content: `
+              <div class="section">
+                <h3>🤖 AI Health Assessment</h3>
+                <p>This assessment was generated using AI analysis of your health data.</p>
+              </div>
+              
+              <div class="section">
+                <h3>📊 Predicted Vitals</h3>
+                <div class="vital-item">• Blood Sugar: ${aiVitals.bloodSugar} mg/dL</div>
+                <div class="vital-item">• Mental Health Score: ${aiVitals.mentalHealthScore}/10</div>
+                <div class="vital-item">• Carotid Doppler: ${aiVitals.carotidDoppler}</div>
+              </div>
+              
+              <div class="section">
+                <h3>💡 AI Recommendations</h3>
+                <p>${aiRecommendations}</p>
+              </div>
+            `,
+            patientName: aiData.name || '',
+            doctorName: 'AI Health Assistant'
+          };
+          
+          await emailService.sendPatientSummary(emailData);
         } catch (emailError) {
           console.warn('Email sending failed:', emailError);
           // Continue even if email fails
@@ -175,7 +200,7 @@ const AIRapidRegistration: React.FC<AIRapidRegistrationProps> = ({ onComplete })
         setError(response.message || 'Failed to register patient');
       }
     } catch (err) {
-      setError('Network error. Please check if the Django server is running on port 3015.');
+      setError('Network error. Please check if the Django server is running.');
     } finally {
       setLoading(false);
     }
@@ -250,7 +275,7 @@ const AIRapidRegistration: React.FC<AIRapidRegistrationProps> = ({ onComplete })
                       label="Full Name"
                       {...register('name')}
                       error={!!errors.name}
-                      helperText={errors.name?.message}
+                      helperText={errors.name?.message as string}
                       required
                     />
                   </Box>
@@ -261,7 +286,7 @@ const AIRapidRegistration: React.FC<AIRapidRegistrationProps> = ({ onComplete })
                       type="email"
                       {...register('email')}
                       error={!!errors.email}
-                      helperText={errors.email?.message}
+                      helperText={errors.email?.message as string}
                       required
                     />
                   </Box>
@@ -273,7 +298,7 @@ const AIRapidRegistration: React.FC<AIRapidRegistrationProps> = ({ onComplete })
                       label="Phone Number"
                       {...register('phone')}
                       error={!!errors.phone}
-                      helperText={errors.phone?.message}
+                      helperText={errors.phone?.message as string}
                       required
                     />
                   </Box>
@@ -284,7 +309,7 @@ const AIRapidRegistration: React.FC<AIRapidRegistrationProps> = ({ onComplete })
                       type="number"
                       {...register('age', { valueAsNumber: true })}
                       error={!!errors.age}
-                      helperText={errors.age?.message}
+                      helperText={errors.age?.message as string}
                       required
                     />
                   </Box>

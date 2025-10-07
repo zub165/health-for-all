@@ -3,11 +3,15 @@ import { BrowserRouter as Router } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { Box, AppBar, Toolbar, Typography, Button, Container } from '@mui/material';
-import { HealthAndSafety, Person, Dashboard } from '@mui/icons-material';
-import PatientRegistration from './components/PatientRegistration';
-import DoctorDashboard from './components/DoctorDashboard';
+import { HealthAndSafety, Person, Dashboard, Api, Description } from '@mui/icons-material';
+import SimplePatientRegistration from './components/SimplePatientRegistration';
+import AIHealthAssessment from './components/AIHealthAssessment';
+import ModernAIHealthAssessment from './components/ModernAIHealthAssessment';
+import EnhancedDoctorDashboard from './components/EnhancedDoctorDashboard';
 import DoctorLogin from './components/DoctorLogin';
-import AIRapidRegistration from './components/AIRapidRegistration';
+import HealthFair from './components/HealthFair';
+import ApiStatusDashboard from './components/ApiStatusDashboard';
+import ApiDocumentation from './components/ApiDocumentation';
 
 const theme = createTheme({
   palette: {
@@ -27,12 +31,17 @@ const theme = createTheme({
 });
 
 function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'patient' | 'doctor' | 'ai-rapid'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'patient' | 'ai-assessment' | 'modern-ai' | 'doctor' | 'health-fair' | 'api-status' | 'api-docs'>('home');
   const [doctorName, setDoctorName] = useState<string>('');
 
   const handleDoctorLogin = (name: string) => {
     setDoctorName(name);
     setCurrentView('doctor');
+  };
+
+  const handleDoctorLogout = () => {
+    setDoctorName('');
+    setCurrentView('home');
   };
 
   const handlePatientRegistration = () => {
@@ -44,15 +53,15 @@ function App() {
     setDoctorName('');
   };
 
-  const handleAIRapidComplete = (patient: any, vitals: any, recommendations: any) => {
-    alert(`AI Registration Complete!\n\nPatient: ${patient.name}\nProcessing Time: Under 10 seconds\nEmail Summary: Sent to ${patient.email}\nUrgency Level: ${recommendations.urgency.toUpperCase()}`);
+  const handleAIAssessmentComplete = (patient: any, healthScore: number, riskFactors: string[], recommendations: string[]) => {
+    alert(`AI Health Assessment Complete!\n\nPatient: ${patient.name}\nHealth Score: ${healthScore}/100\nRisk Factors: ${riskFactors.join(', ')}\nRecommendations: ${recommendations.length} generated`);
     setCurrentView('home');
   };
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
+      <Router basename={window.location.hostname.includes('github.io') ? '/health-for-all' : ''}>
         <Box sx={{ flexGrow: 1 }}>
           <AppBar position="static" elevation={2}>
             <Toolbar>
@@ -86,24 +95,41 @@ function App() {
                     onClick={handlePatientRegistration}
                     sx={{ minWidth: 200, py: 2 }}
                   >
-                    Patient Registration
+                    🤖 AI-Enhanced Patient Registration
                   </Button>
                   
                   <Button
                     variant="contained"
                     size="large"
                     startIcon={<Person />}
-                    onClick={() => setCurrentView('ai-rapid')}
+                    onClick={() => setCurrentView('ai-assessment')}
                     sx={{ 
                       minWidth: 200, 
                       py: 2,
-                      background: 'linear-gradient(45deg, #FF6B6B, #4ECDC4)',
+                      background: 'linear-gradient(45deg, #9C27B0, #E91E63)',
                       '&:hover': {
-                        background: 'linear-gradient(45deg, #FF5252, #26C6DA)',
+                        background: 'linear-gradient(45deg, #7B1FA2, #C2185B)',
                       }
                     }}
                   >
-                    🤖 AI Rapid Registration
+                    🧠 AI Health Assessment
+                  </Button>
+                  
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<Dashboard />}
+                    onClick={() => setCurrentView('modern-ai')}
+                    sx={{ 
+                      minWidth: 200, 
+                      py: 2,
+                      background: 'linear-gradient(45deg, #FF6B35, #F7931E)',
+                      '&:hover': {
+                        background: 'linear-gradient(45deg, #E55A2B, #E8821A)',
+                      }
+                    }}
+                  >
+                    🤖 Modern AI Assessment
                   </Button>
                   
                   <Button
@@ -113,7 +139,47 @@ function App() {
                     onClick={() => setCurrentView('doctor')}
                     sx={{ minWidth: 200, py: 2 }}
                   >
-                    Doctor Login
+                    👨‍⚕️ Doctor Dashboard
+                  </Button>
+                  
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<HealthAndSafety />}
+                    onClick={() => setCurrentView('health-fair')}
+                    sx={{ 
+                      minWidth: 200, 
+                      py: 2,
+                      background: 'linear-gradient(45deg, #FF6B35, #F7931E)',
+                      '&:hover': {
+                        background: 'linear-gradient(45deg, #E55A2B, #E8821A)',
+                      }
+                    }}
+                  >
+                    🏥 Health Fair 2025
+                  </Button>
+                </Box>
+
+                {/* API Management Section */}
+                <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    startIcon={<Api />}
+                    onClick={() => setCurrentView('api-status')}
+                    sx={{ minWidth: 200, py: 2 }}
+                  >
+                    🔌 API Status
+                  </Button>
+                  
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    startIcon={<Description />}
+                    onClick={() => setCurrentView('api-docs')}
+                    sx={{ minWidth: 200, py: 2 }}
+                  >
+                    📚 API Docs
                   </Button>
                 </Box>
 
@@ -135,24 +201,42 @@ function App() {
             )}
 
             {currentView === 'patient' && (
-              <PatientRegistration
+              <SimplePatientRegistration
                 onSuccess={(patient) => {
-                  alert(`Registration successful! Patient ID: ${patient.id}. You can now proceed to the doctor for vitals check.`);
+                  alert(`AI-Enhanced Registration successful! Patient ID: ${patient.id}. Data saved to Django backend.`);
                   setCurrentView('home');
                 }}
               />
+            )}
+
+            {currentView === 'ai-assessment' && (
+              <AIHealthAssessment
+                onAssessmentComplete={handleAIAssessmentComplete}
+              />
+            )}
+
+            {currentView === 'modern-ai' && (
+              <ModernAIHealthAssessment />
             )}
 
             {currentView === 'doctor' && !doctorName && (
               <DoctorLogin onLogin={handleDoctorLogin} />
             )}
 
-            {currentView === 'ai-rapid' && (
-              <AIRapidRegistration onComplete={handleAIRapidComplete} />
+            {currentView === 'doctor' && doctorName && (
+              <EnhancedDoctorDashboard doctorName={doctorName} onLogout={handleDoctorLogout} />
             )}
 
-            {currentView === 'doctor' && doctorName && (
-              <DoctorDashboard doctorName={doctorName} />
+            {currentView === 'health-fair' && (
+              <HealthFair />
+            )}
+
+            {currentView === 'api-status' && (
+              <ApiStatusDashboard />
+            )}
+
+            {currentView === 'api-docs' && (
+              <ApiDocumentation />
             )}
           </Container>
         </Box>

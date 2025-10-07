@@ -53,9 +53,9 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName }) => {
 
   useEffect(() => {
     const filtered = patients.filter(patient =>
-      patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      patient.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      patient.phoneNumber.includes(searchTerm)
+      (patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim()).toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (patient.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (patient.phoneNumber || patient.phone || '').includes(searchTerm)
     );
     setFilteredPatients(filtered);
   }, [patients, searchTerm]);
@@ -109,13 +109,15 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName }) => {
     setSelectedPatient(null);
   };
 
-  const getBloodSugarStatus = (bloodSugar: number) => {
+  const getBloodSugarStatus = (bloodSugar: number | undefined) => {
+    if (bloodSugar === undefined) return { label: 'Not Recorded', color: 'default' as const };
     if (bloodSugar < 70) return { label: 'Low', color: 'warning' as const };
     if (bloodSugar > 140) return { label: 'High', color: 'error' as const };
     return { label: 'Normal', color: 'success' as const };
   };
 
-  const getMentalHealthStatus = (score: number) => {
+  const getMentalHealthStatus = (score: number | undefined) => {
+    if (score === undefined) return { label: 'Not Recorded', color: 'default' as const };
     if (score <= 4) return { label: 'Minimal', color: 'success' as const };
     if (score <= 9) return { label: 'Mild', color: 'info' as const };
     if (score <= 14) return { label: 'Moderate', color: 'warning' as const };
@@ -181,7 +183,7 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName }) => {
                     
                     <Box mt={2}>
                       <Chip
-                        label={`Allergies: ${patient.allergies.split(',').length} items`}
+                        label={`Allergies: ${(patient.allergies || '').split(',').filter(a => a.trim()).length} items`}
                         size="small"
                         color="warning"
                         variant="outlined"

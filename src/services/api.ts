@@ -10,6 +10,8 @@ const api = API_BASE_URL ? axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: false, // Keep false unless using cookies
+  timeout: 10000, // 10 second timeout
 }) : null;
 
 // Helper function to check if API is available
@@ -29,7 +31,19 @@ export const patientApi = {
       return { success: true, data: demoPatient, message: 'Patient created successfully (Demo Mode)' };
     }
     
-    const response = await api!.post('/patients/', patient);
+    // Transform frontend data to Django backend format
+    const backendPatient = {
+      first_name: patient.firstName || '',
+      last_name: patient.lastName || '',
+      email: patient.email || '',
+      phone: patient.phoneNumber || '',
+      date_of_birth: patient.dateOfBirth || '',
+      gender: patient.gender || 'male',
+      address: patient.address || '',
+      blood_type: patient.bloodGroup && patient.bloodGroup !== '' ? patient.bloodGroup : null,
+    };
+    
+    const response = await api!.post('/patients/', backendPatient);
     return response.data;
   },
 
@@ -40,6 +54,33 @@ export const patientApi = {
     }
     
     const response = await api!.get('/patients/');
+    
+    // Transform backend data to frontend format
+    if (response.data.status === 'success' && response.data.data) {
+      const transformedPatients = response.data.data.map((backendPatient: any) => ({
+        id: backendPatient.id,
+        name: backendPatient.full_name || `${backendPatient.first_name || ''} ${backendPatient.last_name || ''}`.trim(),
+        email: backendPatient.email || '',
+        phoneNumber: backendPatient.phone || '',
+        age: backendPatient.date_of_birth ? new Date().getFullYear() - new Date(backendPatient.date_of_birth).getFullYear() : 0,
+        gender: backendPatient.gender || '',
+        bloodGroup: backendPatient.blood_type || '',
+        // Keep backend fields for compatibility
+        first_name: backendPatient.first_name,
+        last_name: backendPatient.last_name,
+        full_name: backendPatient.full_name,
+        date_of_birth: backendPatient.date_of_birth,
+        phone: backendPatient.phone,
+        blood_type: backendPatient.blood_type,
+        health_risk_score: backendPatient.health_risk_score,
+        recommended_specialists: backendPatient.recommended_specialists,
+        health_trends: backendPatient.health_trends,
+        ai_health_insights: backendPatient.ai_health_insights,
+      }));
+      
+      return { success: true, data: transformedPatients, message: 'Patients loaded successfully' };
+    }
+    
     return response.data;
   },
 

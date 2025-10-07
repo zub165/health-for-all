@@ -16,6 +16,20 @@ import {
 import { Patient } from '../types';
 import { patientApi } from '../services/api';
 
+// Form data type without optional fields
+type PatientFormData = {
+  name: string;
+  email: string;
+  phoneNumber: string;
+  age: number;
+  gender: string;
+  bloodGroup: string;
+  pastMedicalHistory: string;
+  allergies: string;
+  familyHistory: string;
+  medicationList: string;
+};
+
 const schema = yup.object({
   name: yup.string().required('Name is required'),
   email: yup.string().email('Invalid email').required('Email is required'),
@@ -23,10 +37,10 @@ const schema = yup.object({
   age: yup.number().min(1).max(120).required('Age is required'),
   gender: yup.string().required('Gender is required'),
   bloodGroup: yup.string().required('Blood group is required'),
-  pastMedicalHistory: yup.string().required('Past medical history is required'),
-  allergies: yup.string().required('Allergies information is required'),
-  familyHistory: yup.string().required('Family history is required'),
-  medicationList: yup.string().required('Current medication list is required'),
+  pastMedicalHistory: yup.string().default(''),
+  allergies: yup.string().default(''),
+  familyHistory: yup.string().default(''),
+  medicationList: yup.string().default(''),
 });
 
 const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
@@ -46,7 +60,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
     handleSubmit,
     formState: { errors },
     reset,
-  } = useForm<Patient>({
+  } = useForm<any>({
     resolver: yupResolver(schema),
     defaultValues: {
       name: '',
@@ -62,7 +76,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
     },
   });
 
-  const onSubmit = async (data: Patient) => {
+  const onSubmit = async (data: any) => {
     setLoading(true);
     setError(null);
     setSuccess(false);
@@ -115,7 +129,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
                 label="Full Name"
                 {...register('name')}
                 error={!!errors.name}
-                helperText={errors.name?.message}
+                helperText={errors.name?.message as string}
                 required
               />
             </Box>
@@ -127,7 +141,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
                 type="email"
                 {...register('email')}
                 error={!!errors.email}
-                helperText={errors.email?.message}
+                helperText={errors.email?.message as string}
                 required
               />
             </Box>
@@ -138,7 +152,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
                 label="Phone Number"
                 {...register('phoneNumber')}
                 error={!!errors.phoneNumber}
-                helperText={errors.phoneNumber?.message}
+                helperText={errors.phoneNumber?.message as string}
                 required
               />
             </Box>
@@ -150,7 +164,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
                 type="number"
                 {...register('age', { valueAsNumber: true })}
                 error={!!errors.age}
-                helperText={errors.age?.message}
+                helperText={errors.age?.message as string}
                 required
               />
             </Box>
@@ -162,7 +176,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
                 label="Gender"
                 {...register('gender')}
                 error={!!errors.gender}
-                helperText={errors.gender?.message}
+                helperText={errors.gender?.message as string}
                 required
               >
                 {genders.map((gender) => (
@@ -180,7 +194,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
                 label="Blood Group"
                 {...register('bloodGroup')}
                 error={!!errors.bloodGroup}
-                helperText={errors.bloodGroup?.message}
+                helperText={errors.bloodGroup?.message as string}
                 required
               >
                 {bloodGroups.map((group) => (
@@ -200,7 +214,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
                 placeholder="Describe any previous medical conditions, surgeries, or treatments..."
                 {...register('pastMedicalHistory')}
                 error={!!errors.pastMedicalHistory}
-                helperText={errors.pastMedicalHistory?.message}
+                helperText={errors.pastMedicalHistory?.message as string}
                 required
               />
             </Box>
@@ -214,7 +228,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
                 placeholder="List any known allergies (medications, food, environmental, etc.)..."
                 {...register('allergies')}
                 error={!!errors.allergies}
-                helperText={errors.allergies?.message}
+                helperText={errors.allergies?.message as string}
                 required
               />
             </Box>
@@ -228,7 +242,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
                 placeholder="Describe any hereditary conditions or family medical history..."
                 {...register('familyHistory')}
                 error={!!errors.familyHistory}
-                helperText={errors.familyHistory?.message}
+                helperText={errors.familyHistory?.message as string}
                 required
               />
             </Box>
@@ -242,7 +256,7 @@ const PatientRegistration: React.FC<PatientRegistrationProps> = ({ onSuccess }) 
                 placeholder="List all current medications, dosages, and frequency..."
                 {...register('medicationList')}
                 error={!!errors.medicationList}
-                helperText={errors.medicationList?.message}
+                helperText={errors.medicationList?.message as string}
                 required
               />
             </Box>

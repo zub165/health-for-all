@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -27,6 +27,21 @@ const DoctorLogin: React.FC<DoctorLoginProps> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Check if doctor is already logged in
+  useEffect(() => {
+    const savedDoctorData = localStorage.getItem('doctorData');
+    if (savedDoctorData) {
+      try {
+        const doctorData = JSON.parse(savedDoctorData);
+        // Auto-login if doctor data exists
+        onLogin(doctorData.name);
+      } catch (err) {
+        // Clear invalid data
+        localStorage.removeItem('doctorData');
+      }
+    }
+  }, [onLogin]);
+
   const {
     register,
     handleSubmit,
@@ -43,6 +58,16 @@ const DoctorLogin: React.FC<DoctorLoginProps> = ({ onLogin }) => {
       // Simulate doctor authentication
       // In a real application, this would validate against a database
       await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Save doctor data to localStorage for persistence
+      const doctorData = {
+        name: data.name,
+        email: data.email,
+        loginTime: new Date().toISOString(),
+        id: `doctor_${Date.now()}`
+      };
+      
+      localStorage.setItem('doctorData', JSON.stringify(doctorData));
       
       // For demo purposes, accept any valid email format
       onLogin(data.name);
@@ -78,7 +103,7 @@ const DoctorLogin: React.FC<DoctorLoginProps> = ({ onLogin }) => {
                 label="Doctor Name"
                 {...register('name')}
                 error={!!errors.name}
-                helperText={errors.name?.message}
+                helperText={errors.name?.message as string}
                 required
                 InputProps={{
                   startAdornment: <Person sx={{ mr: 1, color: 'text.secondary' }} />,
@@ -93,7 +118,7 @@ const DoctorLogin: React.FC<DoctorLoginProps> = ({ onLogin }) => {
                 type="email"
                 {...register('email')}
                 error={!!errors.email}
-                helperText={errors.email?.message}
+                helperText={errors.email?.message as string}
                 required
                 InputProps={{
                   startAdornment: <Lock sx={{ mr: 1, color: 'text.secondary' }} />,

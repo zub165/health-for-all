@@ -21,17 +21,18 @@ export const getApiBaseUrl = (): string | null => {
   if (isProduction && isBackendAvailable) {
     return process.env.REACT_APP_BACKEND_URL || null;
   } else if (isProduction) {
-    // In production, use your external Django backend
-    return 'http://208.109.215.53:3015/api';
+    // For GitHub Pages - use HTTPS backend with /api suffix managed by Nginx
+    return 'https://208.109.215.53/api';
   } else {
-    // In development, use local Django backend
-    return API_CONFIG.DEVELOPMENT;
+    // In development, point directly to HTTPS backend /api
+    return 'https://208.109.215.53/api';
   }
 };
 
 // Environment detection
 export const isDemoMode = (): boolean => {
-  return getApiBaseUrl() === API_CONFIG.DEMO;
+  // Only use demo mode if explicitly set to null
+  return getApiBaseUrl() === null;
 };
 
 export const isDevelopment = (): boolean => {
@@ -41,3 +42,4 @@ export const isDevelopment = (): boolean => {
 export const isProduction = (): boolean => {
   return window.location.hostname.includes('github.io');
 };
+// Cache busting comment - Mon Oct  6 23:53:50 EDT 2025

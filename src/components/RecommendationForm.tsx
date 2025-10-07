@@ -76,7 +76,7 @@ const RecommendationForm: React.FC<RecommendationFormProps> = ({
         setError(response.message || 'Failed to save recommendations');
       }
     } catch (err) {
-      setError('Network error. Please check if the Django server is running on port 3015.');
+      setError('Network error. Please check if the Django server is running.');
     } finally {
       setLoading(false);
     }
@@ -180,7 +180,7 @@ Health for All Fair
                 placeholder="Enter detailed health recommendations..."
                 {...register('recommendations')}
                 error={!!errors.recommendations}
-                helperText={errors.recommendations?.message}
+                helperText={errors.recommendations?.message as string}
                 required
               />
             </Box>

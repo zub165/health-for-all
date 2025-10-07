@@ -68,7 +68,7 @@ const VitalsTracking: React.FC<VitalsTrackingProps> = ({ patient, doctorName, on
     handleSubmit,
     formState: { errors },
     reset,
-  } = useForm<Pick<Vitals, 'bloodSugar' | 'carotidDoppler'>>({
+  } = useForm<any>({
     resolver: yupResolver(schema),
   });
 
@@ -99,7 +99,7 @@ const VitalsTracking: React.FC<VitalsTrackingProps> = ({ patient, doctorName, on
 
     try {
       const mentalHealthScore = calculateMentalHealthScore();
-      const vitalsData: Omit<Vitals, 'id'> = {
+      const vitalsData: any = {
         patientId: patient.id!,
         bloodSugar: data.bloodSugar,
         carotidDoppler: data.carotidDoppler,
@@ -186,7 +186,7 @@ const VitalsTracking: React.FC<VitalsTrackingProps> = ({ patient, doctorName, on
                 type="number"
                 {...register('bloodSugar', { valueAsNumber: true })}
                 error={!!errors.bloodSugar}
-                helperText={errors.bloodSugar?.message}
+                helperText={errors.bloodSugar?.message as string}
                 required
               />
             </Box>
@@ -198,7 +198,7 @@ const VitalsTracking: React.FC<VitalsTrackingProps> = ({ patient, doctorName, on
                 label="Carotid Doppler Result"
                 {...register('carotidDoppler')}
                 error={!!errors.carotidDoppler}
-                helperText={errors.carotidDoppler?.message}
+                helperText={errors.carotidDoppler?.message as string}
                 required
               >
                 {carotidDopplerOptions.map((option) => (
