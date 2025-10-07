@@ -2,12 +2,12 @@
 import axios from 'axios';
 import { getApiBaseUrl } from '../config/api';
 
-// API Base URLs
+// API Base URLs - All services use the same base URL since they're all part of the main API
 const API_BASE_URL = getApiBaseUrl();
-const NUTRITION_API_URL = API_BASE_URL?.replace('/api', '/api/nutrition') || null;
-const AI_SERVICES_URL = API_BASE_URL?.replace('/api', '/ai') || null;
-const LAB_API_URL = API_BASE_URL?.replace('/api', '/lab') || null;
-const HEALTH_FAIR_URL = API_BASE_URL?.replace('/api', '/health-fair') || null;
+const NUTRITION_API_URL = API_BASE_URL; // Use same base URL
+const AI_SERVICES_URL = API_BASE_URL; // Use same base URL
+const LAB_API_URL = API_BASE_URL; // Use same base URL
+const HEALTH_FAIR_URL = API_BASE_URL; // Use same base URL
 
 // Create axios instances for different services
 const createApiInstance = (baseURL: string | null) => {
@@ -367,43 +367,26 @@ export const checkApiStatus = async () => {
   };
 
   try {
-    // Check main API
+    // Check main API - use the actual health endpoint
     const mainResponse = await mainApiService.health.check();
-    status.main = mainResponse?.status === 200;
+    const isMainOnline = mainResponse?.status === 200;
+    
+    // If main API is online, all services are considered online since they're part of the same backend
+    status.main = isMainOnline;
+    status.nutrition = isMainOnline;
+    status.ai = isMainOnline;
+    status.lab = isMainOnline;
+    status.healthFair = isMainOnline;
+    
+    console.log('API Status Check:', { main: isMainOnline, allServices: isMainOnline });
   } catch (error) {
     console.error('Main API not available:', error);
-  }
-
-  try {
-    // Check nutrition API
-    const nutritionResponse = await nutritionApiService.health();
-    status.nutrition = nutritionResponse?.status === 200;
-  } catch (error) {
-    console.error('Nutrition API not available:', error);
-  }
-
-  try {
-    // Check AI services API
-    const aiResponse = await aiServicesApi.health();
-    status.ai = aiResponse?.status === 200;
-  } catch (error) {
-    console.error('AI Services API not available:', error);
-  }
-
-  try {
-    // Check lab API
-    const labResponse = await labApiService.health();
-    status.lab = labResponse?.status === 200;
-  } catch (error) {
-    console.error('Lab API not available:', error);
-  }
-
-  try {
-    // Check health fair API
-    const healthFairResponse = await healthFairApiService.dashboard();
-    status.healthFair = healthFairResponse?.status === 200;
-  } catch (error) {
-    console.error('Health Fair API not available:', error);
+    // All services are offline if main API is offline
+    status.main = false;
+    status.nutrition = false;
+    status.ai = false;
+    status.lab = false;
+    status.healthFair = false;
   }
 
   return status;
