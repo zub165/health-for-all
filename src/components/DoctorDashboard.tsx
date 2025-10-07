@@ -20,12 +20,17 @@ import {
   ListItem,
   ListItemText,
   Divider,
+  AppBar,
+  Toolbar,
+  IconButton,
 } from '@mui/material';
 import {
   Search as SearchIcon,
   Person as PersonIcon,
   HealthAndSafety as HealthIcon,
   Visibility as ViewIcon,
+  Logout as LogoutIcon,
+  Dashboard as DashboardIcon,
 } from '@mui/icons-material';
 import { Patient, Vitals } from '../types';
 import { patientApi, vitalsApi } from '../services/api';
@@ -34,9 +39,10 @@ import RecommendationForm from './RecommendationForm';
 
 interface DoctorDashboardProps {
   doctorName: string;
+  onLogout?: () => void;
 }
 
-const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName }) => {
+const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -126,15 +132,28 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName }) => {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Paper elevation={3} sx={{ p: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom align="center" color="primary">
-          Doctor Dashboard - {doctorName}
-        </Typography>
-        
-        <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
-          Manage patient records and health screenings
-        </Typography>
+    <Box sx={{ flexGrow: 1 }}>
+      <AppBar position="static" elevation={2}>
+        <Toolbar>
+          <DashboardIcon sx={{ mr: 2 }} />
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            Enhanced Doctor Dashboard - {doctorName}
+          </Typography>
+          <IconButton color="inherit" onClick={onLogout}>
+            <LogoutIcon />
+          </IconButton>
+        </Toolbar>
+      </AppBar>
+
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Paper elevation={3} sx={{ p: 4 }}>
+          <Typography variant="h4" component="h1" gutterBottom align="center" color="primary">
+            👨‍⚕️ Enhanced Doctor Dashboard
+          </Typography>
+          
+          <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
+            Advanced patient management with AI-powered insights
+          </Typography>
 
         {error && (
           <Alert severity="error" sx={{ mb: 3 }}>
@@ -168,17 +187,19 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName }) => {
                   <CardContent>
                     <Box display="flex" alignItems="center" mb={2}>
                       <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="h6">{patient.name}</Typography>
+                      <Typography variant="h6">
+                      {patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim()}
+                    </Typography>
                     </Box>
                     
                     <Typography variant="body2" color="text.secondary" gutterBottom>
-                      <strong>Email:</strong> {patient.email}
+                      <strong>Email:</strong> {patient.email || 'N/A'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" gutterBottom>
-                      <strong>Phone:</strong> {patient.phoneNumber}
+                      <strong>Phone:</strong> {patient.phoneNumber || patient.phone || 'N/A'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" gutterBottom>
-                      <strong>Blood Group:</strong> {patient.bloodGroup}
+                      <strong>Blood Group:</strong> {patient.bloodGroup || patient.blood_type || 'N/A'}
                     </Typography>
                     
                     <Box mt={2}>
@@ -224,7 +245,7 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName }) => {
             </Typography>
           </Box>
         )}
-      </Paper>
+        </Paper>
 
       {/* Patient Details Dialog */}
       <Dialog
@@ -383,7 +404,8 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName }) => {
           </DialogContent>
         </Dialog>
       )}
-    </Container>
+      </Container>
+    </Box>
   );
 };
 

@@ -7,7 +7,7 @@ import { HealthAndSafety, Person, Dashboard, Api, Description } from '@mui/icons
 import SimplePatientRegistration from './components/SimplePatientRegistration';
 import AIHealthAssessment from './components/AIHealthAssessment';
 import ModernAIHealthAssessment from './components/ModernAIHealthAssessment';
-import EnhancedDoctorDashboard from './components/EnhancedDoctorDashboard';
+import DoctorDashboard from './components/DoctorDashboard';
 import DoctorLogin from './components/DoctorLogin';
 import HealthFair from './components/HealthFair';
 import ApiStatusDashboard from './components/ApiStatusDashboard';
@@ -228,7 +228,7 @@ function App() {
             )}
 
             {currentView === 'doctor' && doctorName && (
-              <EnhancedDoctorDashboard doctorName={doctorName} onLogout={handleDoctorLogout} />
+              <DoctorDashboard doctorName={doctorName} onLogout={handleDoctorLogout} />
             )}
 
             {currentView === 'health-fair' && (
