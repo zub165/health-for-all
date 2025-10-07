@@ -7,12 +7,60 @@ const API_BASE_URL = getApiBaseUrl();
 // Create axios instance only if we have a backend URL
 const api = API_BASE_URL ? axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // Do not set Content-Type globally to avoid preflight on GET
   withCredentials: false, // Keep false unless using cookies
   timeout: 10000, // 10 second timeout
 }) : null;
+
+// Interceptors: remove Content-Type on GET and validate content-type for JSON responses
+if (api) {
+  api.interceptors.request.use((config) => {
+    const method = (config.method || 'get').toLowerCase();
+    // Ensure headers object exists
+    if (!config.headers) config.headers = {} as any;
+
+    // Remove Content-Type on GET to avoid preflight
+    if (method === 'get') {
+      if ((config.headers as any).set) {
+        // AxiosHeaders instance
+        (config.headers as any).delete?.('Content-Type');
+      } else if ('Content-Type' in (config.headers as any)) {
+        delete (config.headers as any)['Content-Type'];
+      }
+    }
+
+    // Set Accept header safely
+    if ((config.headers as any).set) {
+      (config.headers as any).set('Accept', 'application/json');
+    } else {
+      (config.headers as any)['Accept'] = 'application/json';
+    }
+
+    return config;
+  });
+
+  api.interceptors.response.use(
+    (response) => {
+      const method = (response.config.method || 'get').toLowerCase();
+      const contentType = String(response.headers['content-type'] || '');
+      if (method === 'get' && !contentType.includes('application/json')) {
+        const dataPreview = typeof response.data === 'string' ? response.data.slice(0, 200) : '';
+        return Promise.reject(new Error(`Expected JSON, got ${contentType || 'unknown'} — ${dataPreview}`));
+      }
+      return response;
+    },
+    async (error) => {
+      const status = error?.response?.status;
+      const statusText = error?.response?.statusText || '';
+      const ct = String(error?.response?.headers?.['content-type'] || '');
+      let body = '';
+      try {
+        body = typeof error?.response?.data === 'string' ? error.response.data : JSON.stringify(error?.response?.data);
+      } catch {}
+      return Promise.reject(new Error(`HTTP ${status} ${statusText} — ct:${ct} — ${body.slice(0, 200)}`));
+    }
+  );
+}
 
 // Helper function to check if API is available
 const isApiAvailable = (): boolean => {
