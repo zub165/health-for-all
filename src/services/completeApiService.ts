@@ -33,32 +33,32 @@ const healthFairApi = createApiInstance(HEALTH_FAIR_URL);
 export const mainApiService = {
   // Health & System
   health: {
-    check: () => api?.get('/health/'),
-    userData: () => api?.get('/user-data/'),
+    check: () => api?.get('/api/health/'),
+    userData: () => api?.get('/api/user-data/'),
   },
 
   // Hospital Management
   hospitals: {
-    list: () => api?.get('/hospitals/'),
-    enhanced: () => api?.get('/hospitals-enhanced/'),
-    details: (hospitalId: string) => api?.get(`/hospitals/${hospitalId}/`),
-    search: (query: string) => api?.get(`/hospitals/search/?q=${query}`),
-    add: (hospitalData: any) => api?.post('/hospitals/add/', hospitalData),
-    stats: () => api?.get('/hospitals/stats/'),
-    smartWaitTime: (hospitalId: string) => api?.get(`/hospitals/${hospitalId}/smart-wait-time/`),
+    list: () => api?.get('/api/hospitals/'),
+    enhanced: () => api?.get('/api/hospitals-enhanced/'),
+    details: (hospitalId: string) => api?.get(`/api/hospitals/${hospitalId}/`),
+    search: (query: string) => api?.get(`/api/hospitals/search/?q=${query}`),
+    add: (hospitalData: any) => api?.post('/api/hospitals/add/', hospitalData),
+    stats: () => api?.get('/api/hospitals/stats/'),
+    smartWaitTime: (hospitalId: string) => api?.get(`/api/hospitals/${hospitalId}/smart-wait-time/`),
     updateWaitTime: (hospitalId: string, waitTimeData: any) => 
-      api?.post(`/hospitals/${hospitalId}/update-wait-time/`, waitTimeData),
+      api?.post(`/api/hospitals/${hospitalId}/update-wait-time/`, waitTimeData),
     updateRating: (hospitalId: string, ratingData: any) => 
-      api?.post(`/hospitals/${hospitalId}/update-rating/`, ratingData),
+      api?.post(`/api/hospitals/${hospitalId}/update-rating/`, ratingData),
     updateERCapacity: (hospitalId: string, capacityData: any) => 
-      api?.post(`/hospitals/${hospitalId}/er-capacity/`, capacityData),
-    topPerforming: () => api?.get('/hospitals/top-performing/'),
-    performance: (hospitalId: string) => api?.get(`/hospitals/${hospitalId}/performance/`),
-    feedback: (hospitalId: string) => api?.get(`/hospitals/${hospitalId}/feedback/`),
-    aiWaitTime: (hospitalId: string) => api?.get(`/hospitals/${hospitalId}/ai-wait-time/`),
-    traffic: (hospitalId: string) => api?.get(`/hospitals/${hospitalId}/traffic/`),
-    weather: (hospitalId: string) => api?.get(`/hospitals/${hospitalId}/weather/`),
-    updateWaitTimes: (waitTimesData: any) => api?.post('/hospitals/wait-times/update/', waitTimesData),
+      api?.post(`/api/hospitals/${hospitalId}/er-capacity/`, capacityData),
+    topPerforming: () => api?.get('/api/hospitals/top-performing/'),
+    performance: (hospitalId: string) => api?.get(`/api/hospitals/${hospitalId}/performance/`),
+    feedback: (hospitalId: string) => api?.get(`/api/hospitals/${hospitalId}/feedback/`),
+    aiWaitTime: (hospitalId: string) => api?.get(`/api/hospitals/${hospitalId}/ai-wait-time/`),
+    traffic: (hospitalId: string) => api?.get(`/api/hospitals/${hospitalId}/traffic/`),
+    weather: (hospitalId: string) => api?.get(`/api/hospitals/${hospitalId}/weather/`),
+    updateWaitTimes: (waitTimesData: any) => api?.post('/api/hospitals/wait-times/update/', waitTimesData),
   },
 
   // Feedback System
@@ -69,10 +69,10 @@ export const mainApiService = {
 
   // Patient Management
   patients: {
-    list: () => api?.get('/patients/'),
-    search: (query: string) => api?.get(`/patients/search/?q=${query}`),
-    details: (patientId: string) => api?.get(`/patients/${patientId}/`),
-    records: (patientId: string) => api?.get(`/patients/${patientId}/records/`),
+    list: () => api?.get('/api/patients/'),
+    search: (query: string) => api?.get(`/api/patients/search/?q=${query}`),
+    details: (patientId: string) => api?.get(`/api/patients/${patientId}/`),
+    records: (patientId: string) => api?.get(`/api/patients/${patientId}/records/`),
   },
 
   // Medical Records
@@ -141,8 +141,8 @@ export const mainApiService = {
 
   // Analytics & Dashboard
   analytics: {
-    dashboard: () => api?.get('/dashboard/'),
-    analytics: () => api?.get('/analytics/'),
+    dashboard: () => api?.get('/api/dashboard/'),
+    analytics: () => api?.get('/api/analytics/'),
   },
 };
 
@@ -333,7 +333,7 @@ export const healthFairApiService = {
   ai: {
     logs: () => healthFairApi?.get('/ai/logs/'),
   },
-  dashboard: () => healthFairApi?.get('/dashboard/'),
+  dashboard: () => healthFairApi?.get('/api/dashboard/'),
 };
 
 // ===== API DOCUMENTATION =====

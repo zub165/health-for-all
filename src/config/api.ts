@@ -21,11 +21,11 @@ export const getApiBaseUrl = (): string | null => {
   if (isProduction && isBackendAvailable) {
     return process.env.REACT_APP_BACKEND_URL || null;
   } else if (isProduction) {
-    // For GitHub Pages - use HTTPS backend with /api suffix managed by Nginx
-    return 'https://208.109.215.53/api';
+    // For GitHub Pages - use exact domain without /api suffix
+    return 'https://208.109.215.53';
   } else {
-    // In development, point directly to HTTPS backend /api
-    return 'https://208.109.215.53/api';
+    // In development, use exact domain without /api suffix
+    return 'https://208.109.215.53';
   }
 };
 
