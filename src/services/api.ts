@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { Patient, Vitals, Doctor, Recommendation, ApiResponse } from '../types';
-import { getApiBaseUrl, isDemoMode } from '../config/api';
+import { getApiBaseUrl, isDemoMode, API_ENDPOINTS } from '../config/api';
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -11,23 +11,104 @@ const api = API_BASE_URL ? axios.create({
   timeout: 10000, // 10 second timeout
 }) : null;
 
-// Safe fetch helper - disabled to prevent 404 errors
+// Safe fetch helper with proper error handling
 export async function getJson(url: string): Promise<any> {
-  // Always return demo data to prevent API errors
-  console.log(`Demo mode: Skipping API call to ${url}`);
-  throw new Error('Demo mode - API calls disabled');
+  try {
+    console.log(`Making API call to: ${url}`);
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      mode: 'cors', // Enable CORS
+    });
+
+    if (!response.ok) {
+      console.warn(`API endpoint not available: ${url} (${response.status})`);
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('API response:', data);
+    return data;
+  } catch (error) {
+    console.error(`API call failed for ${url}:`, error);
+    throw error;
+  }
 }
 
 // Helper function to check if API is available
 const isApiAvailable = (): boolean => {
-  // Always use demo mode to prevent 404 errors in production
-  return false;
+  const baseUrl = getApiBaseUrl();
+  return baseUrl !== ''; // API is available if we have a base URL
+};
+
+// Test API availability
+const testApiAvailability = async (): Promise<boolean> => {
+  try {
+    const baseUrl = getApiBaseUrl();
+    const healthUrl = `${baseUrl}${API_ENDPOINTS.HEALTH_CHECK}`;
+    console.log(`Testing API availability at: ${healthUrl}`);
+    const response = await fetch(healthUrl, { 
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: { 
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    });
+    console.log(`API health check response: ${response.status}`);
+    return response.ok;
+  } catch (error) {
+    console.warn('API not available, falling back to demo mode:', error);
+    return false;
+  }
 };
 
 // Patient API calls
 export const patientApi = {
   create: async (patient: Omit<Patient, 'id'>): Promise<ApiResponse<Patient>> => {
-    if (!isApiAvailable()) {
+    // Try to connect to the real API first
+    try {
+      const baseUrl = getApiBaseUrl();
+      const patientsUrl = `${baseUrl}${API_ENDPOINTS.PATIENTS}`;
+      console.log(`Attempting to create patient at: ${patientsUrl}`);
+      
+      // Transform frontend data to Django backend format
+      const backendPatient = {
+        first_name: patient.firstName || '',
+        last_name: patient.lastName || '',
+        email: patient.email || '',
+        phone: patient.phoneNumber || '',
+        date_of_birth: patient.dateOfBirth || '',
+        gender: patient.gender || 'male',
+        address: patient.address || '',
+        blood_type: patient.bloodGroup && patient.bloodGroup !== '' ? patient.bloodGroup : null,
+      };
+      
+      const response = await fetch(patientsUrl, {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit', // Don't send cookies
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(backendPatient),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Successfully created patient in database:', data);
+        return { success: true, data: data.data || data, message: 'Patient created successfully in database' };
+      } else {
+        console.warn(`API returned ${response.status}, falling back to demo mode`);
+        throw new Error(`API returned ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('Failed to connect to database, using demo mode:', error);
       // Demo mode: simulate successful creation
       const demoPatient: Patient = {
         ...patient,
@@ -35,25 +116,35 @@ export const patientApi = {
       };
       return { success: true, data: demoPatient, message: 'Patient created successfully (Demo Mode)' };
     }
-    
-    // Transform frontend data to Django backend format
-    const backendPatient = {
-      first_name: patient.firstName || '',
-      last_name: patient.lastName || '',
-      email: patient.email || '',
-      phone: patient.phoneNumber || '',
-      date_of_birth: patient.dateOfBirth || '',
-      gender: patient.gender || 'male',
-      address: patient.address || '',
-      blood_type: patient.bloodGroup && patient.bloodGroup !== '' ? patient.bloodGroup : null,
-    };
-    
-    const response = await api!.post('/patients/', backendPatient);
-    return response.data;
   },
 
   getAll: async (): Promise<ApiResponse<Patient[]>> => {
-    if (!isApiAvailable()) {
+    // Try to connect to the real API first
+    try {
+      const baseUrl = getApiBaseUrl();
+      const patientsUrl = `${baseUrl}${API_ENDPOINTS.PATIENTS}`;
+      console.log(`Attempting to fetch patients from: ${patientsUrl}`);
+      
+      const response = await fetch(patientsUrl, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit', // Don't send cookies
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Successfully fetched patients from database:', data);
+        return { success: true, data: data.data || data, message: 'Patients loaded from database' };
+      } else {
+        console.warn(`API returned ${response.status}, falling back to demo mode`);
+        throw new Error(`API returned ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('Failed to connect to database, using demo patients:', error);
       // Demo mode: return sample patients
       const demoPatients: Patient[] = [
         {

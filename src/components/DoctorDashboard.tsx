@@ -44,15 +44,18 @@ import {
 } from '@mui/icons-material';
 import { Patient, Vitals } from '../types';
 import { patientApi, vitalsApi } from '../services/api';
+import { getApiBaseUrl } from '../config/api';
 import VitalsTracking from './VitalsTracking';
 import RecommendationForm from './RecommendationForm';
+import EmailPreview from './EmailPreview';
 
 interface DoctorDashboardProps {
   doctorName: string;
   onLogout?: () => void;
+  refreshTrigger?: number;
 }
 
-const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout }) => {
+const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout, refreshTrigger }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -64,10 +67,35 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout 
   const [patientVitals, setPatientVitals] = useState<Vitals[]>([]);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailSuccess, setEmailSuccess] = useState(false);
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [emailPreviewData, setEmailPreviewData] = useState<{
+    patient: Patient | null;
+    healthScore: number;
+    riskFactors: string[];
+    recommendations: string[];
+  }>({
+    patient: null,
+    healthScore: 0,
+    riskFactors: [],
+    recommendations: [],
+  });
+  const [doctorAssessment, setDoctorAssessment] = useState({
+    clinicalAssessment: '',
+    treatmentPlan: '',
+    recommendations: '',
+    followUpPlan: '',
+  });
 
   useEffect(() => {
     fetchPatients();
   }, []);
+
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      console.log('Refreshing patients due to new registration...');
+      fetchPatients();
+    }
+  }, [refreshTrigger]);
 
   useEffect(() => {
     const filtered = patients.filter(patient =>
@@ -127,7 +155,23 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout 
     setSelectedPatient(null);
   };
 
-  const handleSendEmail = async (patient: Patient) => {
+  const handleSendEmail = (patient: Patient) => {
+    // Calculate health score for the patient
+    const healthScore = calculatePatientHealthScore(patient);
+    const riskFactors = getPatientRiskFactors(patient);
+    const recommendations = generatePatientRecommendations(patient, healthScore);
+    
+    // Set email preview data and show preview
+    setEmailPreviewData({
+      patient,
+      healthScore,
+      riskFactors,
+      recommendations,
+    });
+    setShowEmailPreview(true);
+  };
+
+  const handleSendEmailConfirm = async () => {
     setEmailLoading(true);
     setEmailSuccess(false);
     
@@ -135,25 +179,33 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout 
       // Simulate email sending (in real app, this would call your email API)
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Calculate health score for the patient
-      const healthScore = calculatePatientHealthScore(patient);
-      const riskFactors = getPatientRiskFactors(patient);
-      const recommendations = generatePatientRecommendations(patient, healthScore);
-      
       // In a real application, this would send an actual email
-      console.log('Email would be sent to:', patient.email);
-      console.log('Health Score:', healthScore);
-      console.log('Risk Factors:', riskFactors);
-      console.log('Recommendations:', recommendations);
+      console.log('Email sent to:', emailPreviewData.patient?.email);
+      console.log('Health Score:', emailPreviewData.healthScore);
+      console.log('Risk Factors:', emailPreviewData.riskFactors);
+      console.log('Recommendations:', emailPreviewData.recommendations);
       
       setEmailSuccess(true);
       setTimeout(() => setEmailSuccess(false), 3000);
+      setShowEmailPreview(false);
       
     } catch (err) {
       console.error('Failed to send email:', err);
     } finally {
       setEmailLoading(false);
     }
+  };
+
+  const handleSaveAssessment = () => {
+    console.log('Saving doctor assessment:', doctorAssessment);
+    // In a real application, this would save to the backend
+    alert('Doctor assessment saved successfully!');
+  };
+
+  const handleUpdatePatientRecord = () => {
+    console.log('Updating patient record with assessment:', doctorAssessment);
+    // In a real application, this would update the patient record in the backend
+    alert('Patient record updated successfully!');
   };
 
   const handleModernAIAssessment = async (patient: Patient) => {
@@ -240,13 +292,14 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout 
         ]
       };
       
-      // Simulate sending AI assessment via email
-      console.log('Modern AI Assessment Complete:', aiAssessment);
-      console.log('Email would be sent to:', patient.email);
-      console.log('AI Assessment Report:', aiAssessment);
-      
-      setEmailSuccess(true);
-      setTimeout(() => setEmailSuccess(false), 3000);
+      // Set email preview data for Modern AI Assessment
+      setEmailPreviewData({
+        patient,
+        healthScore: finalScore,
+        riskFactors: factors,
+        recommendations: recs,
+      });
+      setShowEmailPreview(true);
       
     } catch (err) {
       console.error('Modern AI Assessment failed:', err);
@@ -458,6 +511,15 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout 
           </Alert>
         )}
 
+        {/* API Connection Status */}
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2">
+            <strong>API Status:</strong> Checking connection to Django backend at {getApiBaseUrl()}
+            <br />
+            <strong>Patients Loaded:</strong> {patients.length} patients from {patients.length > 0 && patients[0].id?.startsWith('demo_') ? 'Demo Mode' : 'Database'}
+          </Typography>
+        </Alert>
+
         {emailSuccess && (
           <Alert severity="success" sx={{ mb: 3 }}>
             Modern AI Assessment complete! Patient has received their comprehensive health analysis and AI-powered recommendations via email.
@@ -477,83 +539,192 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout 
           />
         </Box>
 
-        {/* Patients List */}
+        {/* Enhanced Patients List with Tabs */}
         {loading ? (
           <Box display="flex" justifyContent="center" py={4}>
             <CircularProgress />
           </Box>
         ) : (
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 3 }}>
-            {filteredPatients.map((patient) => (
-              <Box key={patient.id}>
-                <Card elevation={2}>
-                  <CardContent>
-                    <Box display="flex" alignItems="center" mb={2}>
-                      <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="h6">
-                      {patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim()}
-                    </Typography>
-                    </Box>
+          <Box>
+            {/* Patient Statistics */}
+            <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Card sx={{ minWidth: 150, bgcolor: 'primary.light', color: 'white' }}>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4">{filteredPatients.length}</Typography>
+                  <Typography variant="body2">Total Patients</Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ minWidth: 150, bgcolor: 'success.light', color: 'white' }}>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4">{filteredPatients.filter(p => p.age && p.age < 50).length}</Typography>
+                  <Typography variant="body2">Under 50</Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ minWidth: 150, bgcolor: 'warning.light', color: 'white' }}>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4">{filteredPatients.filter(p => p.age && p.age >= 50).length}</Typography>
+                  <Typography variant="body2">50+ Years</Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ minWidth: 150, bgcolor: 'error.light', color: 'white' }}>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4">{filteredPatients.filter(p => p.allergies && p.allergies.length > 0).length}</Typography>
+                  <Typography variant="body2">With Allergies</Typography>
+                </CardContent>
+              </Card>
+            </Box>
+
+            {/* Enhanced Patient Cards */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: 3 }}>
+              {filteredPatients.map((patient) => (
+                <Box key={patient.id}>
+                  <Card elevation={3} sx={{ 
+                    height: '100%', 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: 6
+                    }
+                  }}>
+                    <CardContent sx={{ flexGrow: 1 }}>
+                      {/* Patient Header */}
+                      <Box display="flex" alignItems="center" mb={2}>
+                        <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
+                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                          {patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim()}
+                        </Typography>
+                        {patient.age && patient.age > 65 && (
+                          <Chip label="Senior" size="small" color="warning" sx={{ ml: 1 }} />
+                        )}
+                      </Box>
+                      
+                      {/* Contact Information */}
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          <strong>📧 Email:</strong> {patient.email || 'N/A'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          <strong>📞 Phone:</strong> {patient.phoneNumber || patient.phone || 'N/A'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          <strong>🩸 Blood Group:</strong> {patient.bloodGroup || patient.blood_type || 'N/A'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          <strong>👤 Age:</strong> {patient.age || 'N/A'} | <strong>Gender:</strong> {patient.gender || 'N/A'}
+                        </Typography>
+                      </Box>
+                      
+                      {/* Medical Information Chips */}
+                      <Box sx={{ mb: 2 }}>
+                        <Box display="flex" flexWrap="wrap" gap={1} mb={1}>
+                          <Chip
+                            label={`⚠️ Allergies: ${(patient.allergies || '').split(',').filter(a => a.trim()).length} items`}
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                          />
+                          {patient.pastMedicalHistory && (
+                            <Chip
+                              label={`🏥 Medical History`}
+                              size="small"
+                              color="info"
+                              variant="outlined"
+                            />
+                          )}
+                          {patient.familyHistory && (
+                            <Chip
+                              label={`👨‍👩‍👧‍👦 Family History`}
+                              size="small"
+                              color="secondary"
+                              variant="outlined"
+                            />
+                          )}
+                          {patient.medicationList && (
+                            <Chip
+                              label={`💊 Medications`}
+                              size="small"
+                              color="success"
+                              variant="outlined"
+                            />
+                          )}
+                        </Box>
+                        
+                        {/* Quick Medical Summary */}
+                        {patient.pastMedicalHistory && (
+                          <Typography variant="caption" color="text.secondary" sx={{ 
+                            display: 'block', 
+                            fontStyle: 'italic',
+                            maxHeight: '40px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>
+                            <strong>Medical:</strong> {patient.pastMedicalHistory.length > 80 ? 
+                              patient.pastMedicalHistory.substring(0, 80) + '...' : 
+                              patient.pastMedicalHistory}
+                          </Typography>
+                        )}
+                      </Box>
+                    </CardContent>
                     
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      <strong>Email:</strong> {patient.email || 'N/A'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      <strong>Phone:</strong> {patient.phoneNumber || patient.phone || 'N/A'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      <strong>Blood Group:</strong> {patient.bloodGroup || patient.blood_type || 'N/A'}
-                    </Typography>
-                    
-                    <Box mt={2}>
-                      <Chip
-                        label={`Allergies: ${(patient.allergies || '').split(',').filter(a => a.trim()).length} items`}
-                        size="small"
-                        color="warning"
-                        variant="outlined"
-                      />
-                    </Box>
-                  </CardContent>
-                  
-                  <CardActions>
-                    <Button
-                      size="small"
-                      startIcon={<ViewIcon />}
-                      onClick={() => handleViewPatient(patient)}
-                    >
-                      View Details
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      startIcon={<HealthIcon />}
-                      onClick={() => handleRecordVitals(patient)}
-                    >
-                      Record Vitals
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<EmailIcon />}
-                      onClick={() => handleSendEmail(patient)}
-                      disabled={emailLoading}
-                      color="primary"
-                    >
-                      {emailLoading ? 'Sending...' : 'Send Email'}
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      startIcon={<HealthIcon />}
-                      onClick={() => handleModernAIAssessment(patient)}
-                      color="secondary"
-                    >
-                      Modern AI Assessment
-                    </Button>
-                  </CardActions>
-                </Card>
-              </Box>
-            ))}
+                    {/* Enhanced Action Buttons */}
+                    <CardActions sx={{ 
+                      flexDirection: 'column', 
+                      gap: 1, 
+                      p: 2,
+                      bgcolor: 'grey.50'
+                    }}>
+                      <Box display="flex" gap={1} width="100%">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ViewIcon />}
+                          onClick={() => handleViewPatient(patient)}
+                          sx={{ flex: 1 }}
+                        >
+                          View Details
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<HealthIcon />}
+                          onClick={() => handleRecordVitals(patient)}
+                          sx={{ flex: 1 }}
+                          color="primary"
+                        >
+                          Record Vitals
+                        </Button>
+                      </Box>
+                      
+                      <Box display="flex" gap={1} width="100%">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<EmailIcon />}
+                          onClick={() => handleSendEmail(patient)}
+                          disabled={emailLoading}
+                          color="info"
+                          sx={{ flex: 1 }}
+                        >
+                          {emailLoading ? 'Sending...' : 'Send Email'}
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<HealthIcon />}
+                          onClick={() => handleModernAIAssessment(patient)}
+                          color="secondary"
+                          sx={{ flex: 1 }}
+                        >
+                          AI Assessment
+                        </Button>
+                      </Box>
+                    </CardActions>
+                  </Card>
+                </Box>
+              ))}
+            </Box>
           </Box>
         )}
 
@@ -590,37 +761,61 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout 
                 <AccordionDetails>
                   <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
                     <Box sx={{ flex: 1 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Name:</strong> {selectedPatient.name || selectedPatient.full_name || `${selectedPatient.first_name || ''} ${selectedPatient.last_name || ''}`.trim()}
+                      <Typography variant="h6" gutterBottom color="primary">
+                        📋 Personal Information
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        <strong>Full Name:</strong> {selectedPatient.name || selectedPatient.full_name || `${selectedPatient.first_name || ''} ${selectedPatient.last_name || ''}`.trim()}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                         <strong>Email:</strong> {selectedPatient.email || 'Not provided'}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                         <strong>Phone:</strong> {selectedPatient.phoneNumber || selectedPatient.phone || 'Not provided'}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Age:</strong> {selectedPatient.age || 'Not specified'}
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        <strong>Age:</strong> {selectedPatient.age || 'Not specified'} years
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                         <strong>Gender:</strong> {selectedPatient.gender || 'Not specified'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        <strong>Blood Group:</strong> {selectedPatient.bloodGroup || 'Not specified'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        <strong>Registration Date:</strong> {selectedPatient.registeredAt || selectedPatient.createdAt || 'Not available'}
                       </Typography>
                     </Box>
                     <Box sx={{ flex: 1 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Blood Group:</strong> {selectedPatient.bloodGroup || 'Not specified'}
+                      <Typography variant="h6" gutterBottom color="primary">
+                        🏥 Medical Information
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Allergies:</strong> {selectedPatient.allergies || 'None reported'}
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        <strong>Past Medical History:</strong>
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Medical History:</strong> {selectedPatient.pastMedicalHistory || 'None reported'}
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, pl: 2, fontStyle: 'italic' }}>
+                        {selectedPatient.pastMedicalHistory || 'None reported'}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Family History:</strong> {selectedPatient.familyHistory || 'None reported'}
+                      
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        <strong>Allergies:</strong>
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Medications:</strong> {selectedPatient.medicationList || 'None reported'}
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, pl: 2, fontStyle: 'italic' }}>
+                        {selectedPatient.allergies || 'None reported'}
+                      </Typography>
+                      
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        <strong>Family History:</strong>
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, pl: 2, fontStyle: 'italic' }}>
+                        {selectedPatient.familyHistory || 'None reported'}
+                      </Typography>
+                      
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        <strong>Current Medications:</strong>
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, pl: 2, fontStyle: 'italic' }}>
+                        {selectedPatient.medicationList || 'None reported'}
                       </Typography>
                     </Box>
                   </Box>
@@ -852,6 +1047,265 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout 
                 </AccordionDetails>
               </Accordion>
 
+              {/* Editable SOAP Note */}
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography variant="h6">📝 Editable SOAP Note</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  {/* Subjective */}
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" gutterBottom>
+                      <strong>S</strong>ubjective
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Chief Complaint"
+                      placeholder="Enter patient's main complaint..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="History of Present Illness"
+                      placeholder="Describe the history of the current illness..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      label="Patient's Symptoms"
+                      placeholder="List current symptoms and their duration..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+
+                  {/* Objective */}
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" gutterBottom>
+                      <strong>O</strong>bjective
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Physical Examination Findings"
+                      placeholder="Enter physical examination findings..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      label="Laboratory Results"
+                      placeholder="Enter any lab results or test findings..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      label="Diagnostic Tests"
+                      placeholder="Enter results of any diagnostic tests..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+
+                  {/* Assessment */}
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" gutterBottom>
+                      <strong>A</strong>ssessment
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={4}
+                      label="Clinical Diagnosis"
+                      placeholder="Enter your clinical diagnosis and assessment..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      label="Differential Diagnosis"
+                      placeholder="List differential diagnoses if applicable..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      label="Risk Factors"
+                      placeholder="Identify any risk factors or concerns..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+
+                  {/* Plan */}
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" gutterBottom>
+                      <strong>P</strong>lan
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Treatment Plan"
+                      placeholder="Enter treatment plan and medications..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      label="Follow-up Instructions"
+                      placeholder="Enter follow-up instructions and next steps..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      label="Patient Education"
+                      placeholder="Enter patient education and counseling provided..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      label="Referrals"
+                      placeholder="Enter any specialist referrals or consultations..."
+                      variant="outlined"
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+                  
+                  <Box display="flex" gap={2} justifyContent="flex-end">
+                    <Button 
+                      variant="outlined" 
+                      color="primary"
+                      onClick={handleSaveAssessment}
+                    >
+                      Save SOAP Note
+                    </Button>
+                    <Button 
+                      variant="contained" 
+                      color="primary"
+                      onClick={handleUpdatePatientRecord}
+                    >
+                      Update Patient Record
+                    </Button>
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
+
+              {/* Doctor Assessment and Plan */}
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography variant="h6">👨‍⚕️ Doctor Assessment & Plan</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" gutterBottom>
+                      📝 Clinical Assessment
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={4}
+                      placeholder="Enter your clinical assessment, observations, and findings..."
+                      variant="outlined"
+                      value={doctorAssessment.clinicalAssessment}
+                      onChange={(e) => setDoctorAssessment(prev => ({ ...prev, clinicalAssessment: e.target.value }))}
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+                  
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" gutterBottom>
+                      🎯 Treatment Plan
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={4}
+                      placeholder="Enter treatment plan, medications, follow-up instructions..."
+                      variant="outlined"
+                      value={doctorAssessment.treatmentPlan}
+                      onChange={(e) => setDoctorAssessment(prev => ({ ...prev, treatmentPlan: e.target.value }))}
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+                  
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" gutterBottom>
+                      📋 Recommendations
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      placeholder="Enter specific recommendations for the patient..."
+                      variant="outlined"
+                      value={doctorAssessment.recommendations}
+                      onChange={(e) => setDoctorAssessment(prev => ({ ...prev, recommendations: e.target.value }))}
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+                  
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" gutterBottom>
+                      🔄 Follow-up Plan
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      placeholder="Enter follow-up schedule and next appointment details..."
+                      variant="outlined"
+                      value={doctorAssessment.followUpPlan}
+                      onChange={(e) => setDoctorAssessment(prev => ({ ...prev, followUpPlan: e.target.value }))}
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+                  
+                  <Box display="flex" gap={2} justifyContent="flex-end">
+                    <Button 
+                      variant="outlined" 
+                      color="primary"
+                      onClick={handleSaveAssessment}
+                    >
+                      Save Assessment
+                    </Button>
+                    <Button 
+                      variant="contained" 
+                      color="primary"
+                      onClick={handleUpdatePatientRecord}
+                    >
+                      Update Patient Record
+                    </Button>
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
+
               {/* Vitals History */}
               {patientVitals.length > 0 && (
                 <Accordion>
@@ -973,6 +1427,18 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout 
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Email Preview Dialog */}
+      <EmailPreview
+        open={showEmailPreview}
+        onClose={() => setShowEmailPreview(false)}
+        onSend={handleSendEmailConfirm}
+        patient={emailPreviewData.patient}
+        healthScore={emailPreviewData.healthScore}
+        riskFactors={emailPreviewData.riskFactors}
+        recommendations={emailPreviewData.recommendations}
+        loading={emailLoading}
+      />
       </Container>
     </Box>
   );

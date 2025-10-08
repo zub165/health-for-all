@@ -1,28 +1,24 @@
 // API Configuration
 export const getApiBaseUrl = (): string => {
-  // Always use demo mode for now to prevent 404 errors
-  // When you have a working Django backend, uncomment the lines below
-  /*
+  // Check if we're in production (GitHub Pages) or development
   if (window.location.hostname.includes('github.io')) {
-    return 'https://208.109.215.53/api'; // Your production API URL
+    return 'https://208.109.215.53'; // Your production API URL (HTTPS through Nginx reverse proxy)
   }
-  return 'http://localhost:3015/api';
-  */
-  return ''; // Empty string forces demo mode
+  return 'http://localhost:3015'; // Development API URL (HTTP for local)
 };
 
 export const isDemoMode = (): boolean => {
-  // Always use demo mode to prevent API errors
-  return true;
+  // Use demo mode only if API is not available
+  return false; // Try to use real API first
 };
 
 export const API_ENDPOINTS = {
-  PATIENTS: '/patients/',
-  VITALS: '/vitals/',
-  DOCTORS: '/doctors/',
-  RECOMMENDATIONS: '/recommendations/',
-  HEALTH_CHECK: '/health/',
-  AI_ASSESSMENT: '/ai/assessment/',
-  NUTRITION: '/nutrition/',
-  LAB: '/lab/',
+  PATIENTS: '/api/patients/',
+  VITALS: '/api/vitals/',
+  DOCTORS: '/api/doctors/',
+  RECOMMENDATIONS: '/api/recommendations/',
+  HEALTH_CHECK: '/api/health/',
+  AI_ASSESSMENT: '/api/ai/assessment/',
+  NUTRITION: '/api/nutrition/',
+  LAB: '/api/lab/',
 } as const;

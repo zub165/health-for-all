@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { Box, AppBar, Toolbar, Typography, Button, Container } from '@mui/material';
 import { HealthAndSafety, Person, Dashboard, Api, Description } from '@mui/icons-material';
 import SimplePatientRegistration from './components/SimplePatientRegistration';
+import AIHealthAssessment from './components/AIHealthAssessment';
 import DoctorDashboard from './components/DoctorDashboard';
 import DoctorLogin from './components/DoctorLogin';
 import HealthFair from './components/HealthFair';
@@ -29,8 +30,9 @@ const theme = createTheme({
 });
 
 function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'patient' | 'doctor' | 'health-fair' | 'api-status' | 'api-docs'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'patient' | 'doctor' | 'ai-assessment' | 'health-fair' | 'api-status' | 'api-docs'>('home');
   const [doctorName, setDoctorName] = useState<string>('');
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
   const handleDoctorLogin = (name: string) => {
     setDoctorName(name);
@@ -49,6 +51,15 @@ function App() {
   const handleBackToHome = () => {
     setCurrentView('home');
     setDoctorName('');
+  };
+
+  const handleAIAssessmentComplete = (patient: any, healthScore: number, riskFactors: string[], recommendations: string[]) => {
+    alert(`AI Health Assessment Complete!\n\nPatient: ${patient.name}\nHealth Score: ${healthScore}/100\nRisk Factors: ${riskFactors.join(', ')}\nRecommendations: ${recommendations.length} generated`);
+  };
+
+  const handlePatientRegistered = () => {
+    // Trigger refresh of patient lists
+    setRefreshTrigger(prev => prev + 1);
   };
 
 
@@ -96,7 +107,22 @@ function App() {
                     🤖 AI-Enhanced Patient Registration
                   </Button>
                   
-                  
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<HealthAndSafety />}
+                    onClick={() => setCurrentView('ai-assessment')}
+                    sx={{ 
+                      minWidth: 200, 
+                      py: 2,
+                      background: 'linear-gradient(45deg, #9C27B0, #E91E63)',
+                      '&:hover': {
+                        background: 'linear-gradient(45deg, #7B1FA2, #C2185B)',
+                      }
+                    }}
+                  >
+                    🧠 AI Health Assessment
+                  </Button>
                   
                   <Button
                     variant="outlined"
@@ -170,18 +196,29 @@ function App() {
               <SimplePatientRegistration
                 onSuccess={(patient) => {
                   alert(`AI-Enhanced Registration successful! Patient ID: ${patient.id}. Data saved to Django backend.`);
+                  handlePatientRegistered(); // Trigger refresh
                   setCurrentView('home');
                 }}
               />
             )}
 
+            {currentView === 'ai-assessment' && (
+              <AIHealthAssessment
+                onAssessmentComplete={handleAIAssessmentComplete}
+                refreshTrigger={refreshTrigger}
+              />
+            )}
 
             {currentView === 'doctor' && !doctorName && (
               <DoctorLogin onLogin={handleDoctorLogin} />
             )}
 
             {currentView === 'doctor' && doctorName && (
-              <DoctorDashboard doctorName={doctorName} onLogout={handleDoctorLogout} />
+              <DoctorDashboard 
+                doctorName={doctorName} 
+                onLogout={handleDoctorLogout}
+                refreshTrigger={refreshTrigger}
+              />
             )}
 
             {currentView === 'health-fair' && (
