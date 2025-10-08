@@ -5,8 +5,6 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { Box, AppBar, Toolbar, Typography, Button, Container } from '@mui/material';
 import { HealthAndSafety, Person, Dashboard, Api, Description } from '@mui/icons-material';
 import SimplePatientRegistration from './components/SimplePatientRegistration';
-import AIHealthAssessment from './components/AIHealthAssessment';
-import ModernAIHealthAssessment from './components/ModernAIHealthAssessment';
 import DoctorDashboard from './components/DoctorDashboard';
 import DoctorLogin from './components/DoctorLogin';
 import HealthFair from './components/HealthFair';
@@ -31,7 +29,7 @@ const theme = createTheme({
 });
 
 function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'patient' | 'ai-assessment' | 'modern-ai' | 'doctor' | 'health-fair' | 'api-status' | 'api-docs'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'patient' | 'doctor' | 'health-fair' | 'api-status' | 'api-docs'>('home');
   const [doctorName, setDoctorName] = useState<string>('');
 
   const handleDoctorLogin = (name: string) => {
@@ -53,10 +51,6 @@ function App() {
     setDoctorName('');
   };
 
-  const handleAIAssessmentComplete = (patient: any, healthScore: number, riskFactors: string[], recommendations: string[]) => {
-    alert(`AI Health Assessment Complete!\n\nPatient: ${patient.name}\nHealth Score: ${healthScore}/100\nRisk Factors: ${riskFactors.join(', ')}\nRecommendations: ${recommendations.length} generated`);
-    setCurrentView('home');
-  };
 
   return (
     <ThemeProvider theme={theme}>
@@ -102,39 +96,7 @@ function App() {
                     🤖 AI-Enhanced Patient Registration
                   </Button>
                   
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={<Person />}
-                    onClick={() => setCurrentView('ai-assessment')}
-                    sx={{ 
-                      minWidth: 200, 
-                      py: 2,
-                      background: 'linear-gradient(45deg, #9C27B0, #E91E63)',
-                      '&:hover': {
-                        background: 'linear-gradient(45deg, #7B1FA2, #C2185B)',
-                      }
-                    }}
-                  >
-                    🧠 AI Health Assessment
-                  </Button>
                   
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={<Dashboard />}
-                    onClick={() => setCurrentView('modern-ai')}
-                    sx={{ 
-                      minWidth: 200, 
-                      py: 2,
-                      background: 'linear-gradient(45deg, #FF6B35, #F7931E)',
-                      '&:hover': {
-                        background: 'linear-gradient(45deg, #E55A2B, #E8821A)',
-                      }
-                    }}
-                  >
-                    🤖 Modern AI Assessment
-                  </Button>
                   
                   <Button
                     variant="outlined"
@@ -213,15 +175,6 @@ function App() {
               />
             )}
 
-            {currentView === 'ai-assessment' && (
-              <AIHealthAssessment
-                onAssessmentComplete={handleAIAssessmentComplete}
-              />
-            )}
-
-            {currentView === 'modern-ai' && (
-              <ModernAIHealthAssessment />
-            )}
 
             {currentView === 'doctor' && !doctorName && (
               <DoctorLogin onLogin={handleDoctorLogin} />
