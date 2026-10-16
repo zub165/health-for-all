@@ -6,7 +6,11 @@ import '../services/hybrid_data_service.dart';
 import 'patient_detail_screen.dart';
 
 class PatientsScreen extends StatefulWidget {
-  const PatientsScreen({super.key});
+  const PatientsScreen({super.key, this.ownEmailOnly, this.ownId});
+
+  /// When set (patient portal), only this person's records are shown.
+  final String? ownEmailOnly;
+  final String? ownId;
 
   @override
   State<PatientsScreen> createState() => _PatientsScreenState();
@@ -48,10 +52,23 @@ class _PatientsScreenState extends State<PatientsScreen> {
     super.dispose();
   }
 
+  List<Patient> _scopeOwn(List<Patient> patients) {
+    final email = widget.ownEmailOnly?.trim().toLowerCase();
+    final id = widget.ownId;
+    if (email == null && id == null) return patients;
+    return patients.where((p) {
+      if (id != null && p.id == id) return true;
+      if (email != null && (p.email ?? '').trim().toLowerCase() == email) {
+        return true;
+      }
+      return false;
+    }).toList();
+  }
+
   Future<void> _loadPatients() async {
     setState(() => _loading = true);
     try {
-      final patients = await HybridDataService.instance.fetchPatients();
+      final patients = _scopeOwn(await HybridDataService.instance.fetchPatients());
       if (!mounted) return;
       setState(() {
         _patients

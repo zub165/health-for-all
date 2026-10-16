@@ -19,6 +19,7 @@ import { Person, Lock, Security as SecurityIcon, Gavel as GavelIcon } from '@mui
 import { initializeHIPAACompliance } from '../services/hipaaCompliance';
 import LegalDisclaimers from './LegalDisclaimers';
 import ExportActions from './ExportActions';
+import { readStaffSession, writeStaffSession } from '../utils/appAuth';
 
 const schema = yup.object({
   name: yup.string().optional(), // Optional - will be retrieved from backend or local storage
@@ -38,20 +39,15 @@ const DoctorLogin: React.FC<DoctorLoginProps> = ({ onLogin, onRegister }) => {
   const [error, setError] = useState<string | null>(null);
   const [hipaaCompliance] = useState(() => initializeHIPAACompliance());
 
-  // Check if doctor is already logged in
+  // Check if doctor/admin is already logged in (once)
   useEffect(() => {
-    const savedDoctorData = localStorage.getItem('doctorData');
-    if (savedDoctorData) {
-      try {
-        const doctorData = JSON.parse(savedDoctorData);
-        // Auto-login if doctor data exists
-        onLogin(doctorData.name);
-      } catch (err) {
-        // Clear invalid data
-        localStorage.removeItem('doctorData');
-      }
+    const existing = readStaffSession();
+    if (existing?.name) {
+      onLogin(existing.name);
     }
-  }, [onLogin]);
+    // intentionally only on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const {
     register,
@@ -218,18 +214,13 @@ const DoctorLogin: React.FC<DoctorLoginProps> = ({ onLogin, onRegister }) => {
         authorized: true
       });
       
-      // Save doctor data to localStorage for persistence
-      const doctorData = {
-        name: registeredDoctor?.name || data.name || data.email.split('@')[0], // Use email username if name not provided
+      const session = writeStaffSession({
+        name: registeredDoctor?.name || data.name || data.email.split('@')[0],
         email: data.email,
-        loginTime: new Date().toISOString(),
-        id: registeredDoctor?.id || `doctor_${Date.now()}`,
-        hipaaCompliant: true
-      };
-      
-      localStorage.setItem('doctorData', JSON.stringify(doctorData));
-      
-      onLogin(doctorData.name);
+        id: registeredDoctor?.id ? String(registeredDoctor.id) : `doctor_${Date.now()}`,
+      });
+
+      onLogin(session.name);
     } catch (err) {
       console.error('Login error:', err);
       setError('Login failed. Please try again.');

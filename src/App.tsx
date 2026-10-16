@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { HashRouter as Router } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -19,6 +19,7 @@ import {
   Tabs,
   Tab,
   Divider,
+  Chip,
 } from '@mui/material';
 import {
   HealthAndSafety,
@@ -33,6 +34,7 @@ import {
   VolunteerActivism,
   Psychology,
   Event,
+  Badge as BadgeIcon,
 } from '@mui/icons-material';
 import SimplePatientRegistration from './components/SimplePatientRegistration';
 import AIHealthAssessment from './components/AIHealthAssessment';
@@ -47,11 +49,17 @@ import LabManagement from './components/LabManagement';
 import ICD10Diagnosis from './components/ICD10Diagnosis';
 import DoctorRegistration from './components/DoctorRegistration';
 import VolunteerRegistration from './components/VolunteerRegistration';
+import PatientPortal from './components/PatientPortal';
+import VolunteerPortal from './components/VolunteerPortal';
+import StaffGate from './components/StaffGate';
 import { AppDataProvider, useAppData } from './context/AppDataContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AppRole, STAFF_ONLY_VIEWS, isStaffRole } from './utils/appAuth';
 
 type AppView =
   | 'home'
   | 'patient'
+  | 'patient-portal'
   | 'doctor'
   | 'doctor-register'
   | 'ai-assessment'
@@ -61,7 +69,8 @@ type AppView =
   | 'api-docs'
   | 'lab-management'
   | 'icd10-diagnosis'
-  | 'volunteer-register';
+  | 'volunteer-register'
+  | 'volunteer-portal';
 
 const appTheme = createTheme({
   palette: {
@@ -74,42 +83,151 @@ const appTheme = createTheme({
   },
 });
 
-/** One destination per job — shared AppDataContext keeps patients/volunteers synced. */
-const navigationItems: { label: string; short: string; view: AppView; icon: React.ReactElement }[] = [
+type NavItem = {
+  label: string;
+  short: string;
+  view: AppView;
+  icon: React.ReactElement;
+  /** Roles that may see this nav item. Empty = everyone including guest. */
+  roles?: AppRole[];
+};
+
+const ALL_NAV: NavItem[] = [
   { label: 'Home', short: 'Home', view: 'home', icon: <HomeIcon /> },
-  { label: 'Patient Registration', short: 'Patients', view: 'patient', icon: <Person /> },
-  { label: 'AI Health Assessment', short: 'AI', view: 'ai-assessment', icon: <Psychology /> },
-  { label: 'Doctor Dashboard', short: 'Doctor', view: 'doctor', icon: <Dashboard /> },
-  { label: 'Volunteer Register', short: 'Volunteer', view: 'volunteer-register', icon: <VolunteerActivism /> },
-  { label: 'Health Fair Desk', short: 'Fair', view: 'health-fair-dashboard', icon: <Event /> },
-  { label: 'Lab Management', short: 'Lab', view: 'lab-management', icon: <Science /> },
-  { label: 'ICD-10 Diagnosis', short: 'ICD-10', view: 'icd10-diagnosis', icon: <MedicalServices /> },
-  { label: 'API Status', short: 'API', view: 'api-status', icon: <Api /> },
-  { label: 'API Docs', short: 'Docs', view: 'api-docs', icon: <Description /> },
+  {
+    label: 'Patient Registration',
+    short: 'Patients',
+    view: 'patient',
+    icon: <Person />,
+    roles: ['guest', 'admin', 'doctor'],
+  },
+  {
+    label: 'My health record',
+    short: 'My record',
+    view: 'patient-portal',
+    icon: <BadgeIcon />,
+    roles: ['patient'],
+  },
+  {
+    label: 'AI Health Assessment',
+    short: 'AI',
+    view: 'ai-assessment',
+    icon: <Psychology />,
+    roles: ['admin', 'doctor'],
+  },
+  {
+    label: 'Doctor Dashboard',
+    short: 'Doctor',
+    view: 'doctor',
+    icon: <Dashboard />,
+    roles: ['guest', 'admin', 'doctor'],
+  },
+  {
+    label: 'Volunteer Register',
+    short: 'Volunteer',
+    view: 'volunteer-register',
+    icon: <VolunteerActivism />,
+    roles: ['guest', 'admin', 'doctor'],
+  },
+  {
+    label: 'My volunteer profile',
+    short: 'My profile',
+    view: 'volunteer-portal',
+    icon: <VolunteerActivism />,
+    roles: ['volunteer'],
+  },
+  {
+    label: 'Health Fair Desk',
+    short: 'Fair',
+    view: 'health-fair-dashboard',
+    icon: <Event />,
+    roles: ['admin', 'doctor'],
+  },
+  {
+    label: 'Lab Management',
+    short: 'Lab',
+    view: 'lab-management',
+    icon: <Science />,
+    roles: ['admin', 'doctor'],
+  },
+  {
+    label: 'ICD-10 Diagnosis',
+    short: 'ICD-10',
+    view: 'icd10-diagnosis',
+    icon: <MedicalServices />,
+    roles: ['admin', 'doctor'],
+  },
+  {
+    label: 'API Status',
+    short: 'API',
+    view: 'api-status',
+    icon: <Api />,
+    roles: ['admin', 'doctor', 'guest'],
+  },
+  {
+    label: 'API Docs',
+    short: 'Docs',
+    view: 'api-docs',
+    icon: <Description />,
+    roles: ['admin', 'doctor', 'guest'],
+  },
 ];
+
+function navForRole(role: AppRole): NavItem[] {
+  return ALL_NAV.filter((item) => {
+    if (!item.roles || item.roles.length === 0) return true;
+    return item.roles.includes(role);
+  });
+}
 
 function AppShell() {
   const [currentView, setCurrentView] = useState<AppView>('home');
-  const [doctorName, setDoctorName] = useState<string>('');
-  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const isMobile = useMediaQuery(appTheme.breakpoints.down('md'));
   const { refreshAll, refreshVolunteers } = useAppData();
+  const { role, isStaff, displayName, loginStaff, loginPatient, loginVolunteer, logout } =
+    useAuth();
+
+  const navigationItems = useMemo(() => navForRole(role), [role]);
 
   const navigate = (view: AppView) => {
+    if (STAFF_ONLY_VIEWS.has(view) && !isStaff) {
+      setCurrentView('doctor');
+      setMobileOpen(false);
+      return;
+    }
+    if (view === 'patient-portal' && role !== 'patient') {
+      setCurrentView('patient');
+      setMobileOpen(false);
+      return;
+    }
+    if (view === 'volunteer-portal' && role !== 'volunteer') {
+      setCurrentView('volunteer-register');
+      setMobileOpen(false);
+      return;
+    }
     setCurrentView(view);
     setMobileOpen(false);
   };
 
   const handleDoctorLogin = (name: string) => {
-    setDoctorName(name);
+    try {
+      const raw = localStorage.getItem('doctorData');
+      if (raw) {
+        const d = JSON.parse(raw);
+        loginStaff({ name: d.name || name, email: d.email || '', id: d.id });
+      } else {
+        loginStaff({ name, email: '' });
+      }
+    } catch {
+      loginStaff({ name, email: '' });
+    }
     setCurrentView('doctor');
   };
 
-  const handleDoctorLogout = () => {
-    localStorage.removeItem('doctorData');
-    localStorage.removeItem('hipaa_access_log');
-    setDoctorName('');
+  const handleLogout = () => {
+    logout();
     setCurrentView('home');
   };
 
@@ -117,6 +235,16 @@ function AppShell() {
     setRefreshTrigger((prev) => prev + 1);
     void refreshAll();
   };
+
+  // Keep current view valid when role changes
+  React.useEffect(() => {
+    const allowed = navForRole(role).some((i) => i.view === currentView);
+    if (!allowed) {
+      if (role === 'patient') setCurrentView('patient-portal');
+      else if (role === 'volunteer') setCurrentView('volunteer-portal');
+      else setCurrentView('home');
+    }
+  }, [role, currentView]);
 
   const tabValue = (() => {
     const idx = navigationItems.findIndex((item) => item.view === currentView);
@@ -128,7 +256,7 @@ function AppShell() {
       <Box sx={{ p: 2 }}>
         <Typography variant="h6">Health for All</Typography>
         <Typography variant="body2" color="text.secondary">
-          Jump to any module
+          {role === 'guest' ? 'Public modules' : `Signed in as ${role}`}
         </Typography>
       </Box>
       <Divider />
@@ -161,9 +289,25 @@ function AppShell() {
             <MenuIcon />
           </IconButton>
           <HealthAndSafety sx={{ mr: 1 }} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}
+          >
             Health for All Fair
           </Typography>
+          {displayName && (
+            <Chip
+              size="small"
+              label={`${displayName} · ${role}`}
+              sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: '#fff', mr: 1 }}
+            />
+          )}
+          {role !== 'guest' && (
+            <Button color="inherit" onClick={handleLogout}>
+              Sign out
+            </Button>
+          )}
           {currentView !== 'home' && (
             <Button color="inherit" onClick={() => navigate('home')} startIcon={<HomeIcon />}>
               Home
@@ -171,7 +315,6 @@ function AppShell() {
           )}
         </Toolbar>
 
-        {/* Always-visible tab bar (phone + desktop) so you can switch modules anytime */}
         <Tabs
           value={tabValue}
           onChange={(_, index: number) => navigate(navigationItems[index].view)}
@@ -199,7 +342,7 @@ function AppShell() {
               key={item.view}
               icon={item.icon}
               iconPosition="start"
-              label={isMobile ? item.short : item.short}
+              label={item.short}
             />
           ))}
         </Tabs>
@@ -233,12 +376,18 @@ function AppShell() {
             <Typography
               variant="h5"
               color="text.secondary"
-              sx={{ mb: 4, fontSize: { xs: '1.1rem', md: '1.4rem' } }}
+              sx={{ mb: 2, fontSize: { xs: '1.1rem', md: '1.4rem' } }}
             >
               Comprehensive Health Screening and Care
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-              Use the top tabs or the menu (☰) to open any module anytime.
+              {isStaffRole(role)
+                ? 'Doctor/admin: you can view all patient and volunteer records.'
+                : role === 'patient'
+                  ? 'Patient: you only see your own health record.'
+                  : role === 'volunteer'
+                    ? 'Volunteer: you only see your own profile.'
+                    : 'Register as patient or volunteer for your private portal, or sign in as doctor/admin for full access.'}
             </Typography>
 
             <Box
@@ -255,7 +404,11 @@ function AppShell() {
                 .map((item) => (
                   <Button
                     key={item.view}
-                    variant={item.view === 'ai-assessment' || item.view === 'health-fair-dashboard' ? 'contained' : 'outlined'}
+                    variant={
+                      item.view === 'ai-assessment' || item.view === 'health-fair-dashboard'
+                        ? 'contained'
+                        : 'outlined'
+                    }
                     size="large"
                     startIcon={item.icon}
                     onClick={() => navigate(item.view)}
@@ -271,25 +424,38 @@ function AppShell() {
         {currentView === 'patient' && (
           <SimplePatientRegistration
             onSuccess={(patient) => {
-              alert(`Registration successful! Patient ID: ${patient.id}`);
+              const name =
+                patient.name ||
+                patient.full_name ||
+                `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+              loginPatient({
+                name: name || 'Patient',
+                email: patient.email || '',
+                id: patient.id,
+              });
+              alert(`Registration successful! Opening your private health record.`);
               handlePatientRegistered();
-              navigate('home');
+              setCurrentView('patient-portal');
             }}
           />
         )}
+
+        {currentView === 'patient-portal' && <PatientPortal />}
 
         {currentView === 'ai-assessment' && (
-          <AIHealthAssessment
-            onAssessmentComplete={(patient, healthScore, riskFactors, recommendations) => {
-              alert(
-                `AI Health Assessment Complete!\n\nPatient: ${patient.name}\nHealth Score: ${healthScore}/100\nRisk Factors: ${riskFactors.join(', ')}\nRecommendations: ${recommendations.length} generated`
-              );
-            }}
-            refreshTrigger={refreshTrigger}
-          />
+          <StaffGate title="AI Health Assessment" onRegisterDoctor={() => navigate('doctor-register')}>
+            <AIHealthAssessment
+              onAssessmentComplete={(patient, healthScore, riskFactors, recommendations) => {
+                alert(
+                  `AI Health Assessment Complete!\n\nPatient: ${patient.name}\nHealth Score: ${healthScore}/100\nRisk Factors: ${riskFactors.join(', ')}\nRecommendations: ${recommendations.length} generated`
+                );
+              }}
+              refreshTrigger={refreshTrigger}
+            />
+          </StaffGate>
         )}
 
-        {currentView === 'doctor' && !doctorName && (
+        {currentView === 'doctor' && !isStaff && (
           <DoctorLogin
             onLogin={handleDoctorLogin}
             onRegister={() => navigate('doctor-register')}
@@ -308,39 +474,66 @@ function AppShell() {
           />
         )}
 
-        {currentView === 'doctor' && doctorName && (
+        {currentView === 'doctor' && isStaff && (
           <DoctorDashboard
-            doctorName={doctorName}
-            onLogout={handleDoctorLogout}
+            doctorName={displayName}
+            onLogout={handleLogout}
             refreshTrigger={refreshTrigger}
           />
         )}
 
         {currentView === 'volunteer-register' && (
           <VolunteerRegistration
-            onSuccess={() => {
+            onSuccess={(volunteer) => {
+              loginVolunteer({
+                name: volunteer.full_name,
+                email: volunteer.email,
+                id: volunteer.id,
+              });
               void refreshVolunteers();
-              alert('Volunteer registered (saved locally if backend volunteers API is unavailable).');
+              alert('Volunteer registered. Opening your private profile.');
+              setCurrentView('volunteer-portal');
             }}
           />
         )}
 
-        {currentView === 'health-fair-dashboard' && <HealthFairDashboard />}
+        {currentView === 'volunteer-portal' && <VolunteerPortal />}
+
+        {currentView === 'health-fair-dashboard' && (
+          <StaffGate title="Health Fair Desk" onRegisterDoctor={() => navigate('doctor-register')}>
+            <HealthFairDashboard />
+          </StaffGate>
+        )}
 
         {currentView === 'health-fair-assessment' && (
-          <HealthFairAssessment
-            onSuccess={(result) => {
-              alert(`Health Fair Assessment Complete! Patient ID: ${result.patientId}`);
-              navigate('health-fair-dashboard');
-            }}
-            onCancel={() => navigate('health-fair-dashboard')}
-          />
+          <StaffGate
+            title="Health Fair Assessment"
+            onRegisterDoctor={() => navigate('doctor-register')}
+          >
+            <HealthFairAssessment
+              onSuccess={(result) => {
+                alert(`Health Fair Assessment Complete! Patient ID: ${result.patientId}`);
+                navigate('health-fair-dashboard');
+              }}
+              onCancel={() => navigate('health-fair-dashboard')}
+            />
+          </StaffGate>
         )}
 
         {currentView === 'api-status' && <ApiStatusDashboard />}
         {currentView === 'api-docs' && <ApiDocumentation />}
-        {currentView === 'lab-management' && <LabManagement />}
-        {currentView === 'icd10-diagnosis' && <ICD10Diagnosis />}
+
+        {currentView === 'lab-management' && (
+          <StaffGate title="Lab & Radiology" onRegisterDoctor={() => navigate('doctor-register')}>
+            <LabManagement />
+          </StaffGate>
+        )}
+
+        {currentView === 'icd10-diagnosis' && (
+          <StaffGate title="ICD-10 Diagnosis" onRegisterDoctor={() => navigate('doctor-register')}>
+            <ICD10Diagnosis />
+          </StaffGate>
+        )}
       </Container>
     </Box>
   );
@@ -351,9 +544,11 @@ function App() {
     <ThemeProvider theme={appTheme}>
       <CssBaseline />
       <Router>
-        <AppDataProvider>
-          <AppShell />
-        </AppDataProvider>
+        <AuthProvider>
+          <AppDataProvider>
+            <AppShell />
+          </AppDataProvider>
+        </AuthProvider>
       </Router>
     </ThemeProvider>
   );

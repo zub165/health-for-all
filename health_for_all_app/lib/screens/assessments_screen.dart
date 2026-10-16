@@ -7,7 +7,10 @@ import '../widgets/mental_health_screening.dart';
 /// Full Health Fair assessment — mirrors React `VitalsTracking`:
 /// vitals, HbA1c, lipid panel, carotid Doppler, mental health scores.
 class AssessmentsScreen extends StatefulWidget {
-  const AssessmentsScreen({super.key});
+  const AssessmentsScreen({super.key, this.ownEmailOnly});
+
+  /// Patient portal: only select this patient for assessments.
+  final String? ownEmailOnly;
 
   @override
   State<AssessmentsScreen> createState() => _AssessmentsScreenState();
@@ -68,7 +71,13 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
   Future<void> _loadPatients() async {
     setState(() => _loadingPatients = true);
     try {
-      final patients = await HybridDataService.instance.fetchPatients();
+      var patients = await HybridDataService.instance.fetchPatients();
+      final email = widget.ownEmailOnly?.trim().toLowerCase();
+      if (email != null && email.isNotEmpty) {
+        patients = patients
+            .where((p) => (p.email ?? '').trim().toLowerCase() == email)
+            .toList();
+      }
       if (!mounted) return;
       setState(() {
         _patients = patients;

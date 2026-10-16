@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config/api_config.dart';
 import 'screens/ai_decisions_screen.dart';
@@ -10,6 +9,7 @@ import 'screens/doctor_login_screen.dart';
 import 'screens/lab_screen.dart';
 import 'screens/patients_screen.dart';
 import 'screens/volunteers_screen.dart';
+import 'services/app_session.dart';
 import 'services/hybrid_data_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_shell.dart';
@@ -59,7 +59,7 @@ class _AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<_AuthGate> {
   bool _loading = true;
-  String? _doctorName;
+  AppSession? _session;
 
   @override
   void initState() {
@@ -68,46 +68,23 @@ class _AuthGateState extends State<_AuthGate> {
   }
 
   Future<void> _restoreSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    final loggedIn = prefs.getBool('doctor_logged_in') ?? false;
-    final name = prefs.getString('doctor_name');
+    final session = await AppSessionStore.instance.read();
     if (!mounted) return;
     setState(() {
-      _doctorName = loggedIn && name != null && name.isNotEmpty ? name : null;
+      _session = session;
       _loading = false;
     });
   }
 
-  Future<void> _onLoggedIn(String name) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('doctor_logged_in', true);
-    await prefs.setString('doctor_name', name);
-    if (!mounted) return;
-    setState(() => _doctorName = name);
-  }
-
   Future<void> _logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('doctor_logged_in', false);
-    await prefs.remove('doctor_name');
+    await AppSessionStore.instance.clear();
     if (!mounted) return;
-    setState(() => _doctorName = null);
+    setState(() => _session = null);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (_doctorName == null) {
-      return DoctorLoginScreen(onLoggedIn: _onLoggedIn);
-    }
-    return AppShell(
-      doctorName: _doctorName!,
-      onLogout: _logout,
-      items: const [
+  List<AppNavItem> _itemsFor(AppSession session) {
+    if (session.isStaff) {
+      return const [
         AppNavItem(
           title: 'Dashboard',
           shortLabel: 'Home',
@@ -150,7 +127,76 @@ class _AuthGateState extends State<_AuthGate> {
           selectedIcon: Icons.science_rounded,
           screen: LabScreen(),
         ),
-      ],
+      ];
+    }
+    if (session.role == AppRole.patient) {
+      return [
+        AppNavItem(
+          title: 'My health record',
+          shortLabel: 'My record',
+          icon: Icons.badge_outlined,
+          selectedIcon: Icons.badge,
+          screen: PatientsScreen(ownEmailOnly: session.email, ownId: session.id),
+        ),
+        AppNavItem(
+          title: 'My assessments',
+          shortLabel: 'Assess',
+          icon: Icons.monitor_heart_outlined,
+          selectedIcon: Icons.monitor_heart,
+          screen: AssessmentsScreen(ownEmailOnly: session.email),
+        ),
+      ];
+    }
+    // volunteer
+    return [
+      AppNavItem(
+        title: 'My volunteer profile',
+        shortLabel: 'Profile',
+        icon: Icons.volunteer_activism_outlined,
+        selectedIcon: Icons.volunteer_activism,
+        screen: VolunteersScreen(ownEmailOnly: session.email, ownId: session.id),
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Column(
+          children: [
+            LinearProgressIndicator(minHeight: 3),
+            Expanded(child: SizedBox.shrink()),
+          ],
+        ),
+      );
+    }
+    final session = _session;
+    if (session == null || !session.isStaff) {
+      // Mobile app remains staff-first: require doctor/admin login for full app.
+      // Patient/volunteer own-data portals are on the web app; if session is
+      // patient/volunteer show scoped shell, else show staff login.
+      if (session != null && !session.isStaff) {
+        return AppShell(
+          doctorName: session.name,
+          onLogout: _logout,
+          items: _itemsFor(session),
+        );
+      }
+      return DoctorLoginScreen(
+        onLoggedIn: (name) async {
+          await AppSessionStore.instance.saveStaff(
+            name: name,
+            email: name.contains('@') ? name : 'zub165@yahoo.com',
+          );
+          await _restoreSession();
+        },
+      );
+    }
+    return AppShell(
+      doctorName: session.name,
+      onLogout: _logout,
+      items: _itemsFor(session),
     );
   }
 }

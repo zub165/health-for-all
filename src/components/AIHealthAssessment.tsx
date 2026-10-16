@@ -77,6 +77,7 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
   const {
     patients: hybridPatients,
     loading: contextLoading,
+    refreshing: contextRefreshing,
     error: contextError,
     refreshPatients,
   } = useAppData();
@@ -107,7 +108,9 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
     [hybridPatients]
   );
   const patients = useMemo(() => hybridPatients.map(hybridToPatient), [hybridPatients]);
-  const loading = contextLoading;
+  /** Full-page spinner only on first empty load — never blank the list on refresh (stops flicker). */
+  const showInitialSpinner = contextLoading && patients.length === 0;
+  const showRefreshBar = contextRefreshing || (contextLoading && patients.length > 0);
 
   useEffect(() => {
     if (contextError) setError(contextError);
@@ -333,18 +336,20 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
               )}
         </Box>
 
-        {/* Loading State */}
-        {loading && (
+        {showRefreshBar && <LinearProgress sx={{ mb: 2, minHeight: 3 }} />}
+
+        {/* Loading State — only when we have nothing to show yet */}
+        {showInitialSpinner && (
           <Box display="flex" justifyContent="center" alignItems="center" sx={{ py: 4 }}>
-                  <CircularProgress />
+            <CircularProgress />
             <Typography variant="body1" sx={{ ml: 2 }}>
               Loading patients...
-                </Typography>
-                </Box>
+            </Typography>
+          </Box>
         )}
 
-        {/* Patient List */}
-        {!loading && !selectedPatient && (
+        {/* Patient List — stays mounted during background refresh (no flicker) */}
+        {!showInitialSpinner && !selectedPatient && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {filteredPatients.map((patient) => {
               // Determine data source

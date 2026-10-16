@@ -7,7 +7,10 @@ import '../services/api_client.dart';
 import '../services/hybrid_data_service.dart';
 
 class VolunteersScreen extends StatefulWidget {
-  const VolunteersScreen({super.key});
+  const VolunteersScreen({super.key, this.ownEmailOnly, this.ownId});
+
+  final String? ownEmailOnly;
+  final String? ownId;
 
   @override
   State<VolunteersScreen> createState() => _VolunteersScreenState();
@@ -24,10 +27,24 @@ class _VolunteersScreenState extends State<VolunteersScreen> {
     _loadVolunteers();
   }
 
+  List<Volunteer> _scopeOwn(List<Volunteer> list) {
+    final email = widget.ownEmailOnly?.trim().toLowerCase();
+    final id = widget.ownId;
+    if (email == null && id == null) return list;
+    return list.where((v) {
+      if (id != null && v.id == id) return true;
+      if (email != null && (v.email ?? '').trim().toLowerCase() == email) {
+        return true;
+      }
+      return false;
+    }).toList();
+  }
+
   Future<void> _loadVolunteers() async {
     setState(() => _loading = true);
     try {
-      final volunteers = await HybridDataService.instance.fetchVolunteers();
+      final volunteers =
+          _scopeOwn(await HybridDataService.instance.fetchVolunteers());
       if (!mounted) return;
       setState(() {
         _volunteers
