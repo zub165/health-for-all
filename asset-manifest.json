@@ -1,19 +1,19 @@
 {
   "files": {
     "main.css": "/health-for-all/static/css/main.e6c13ad2.css",
-    "main.js": "/health-for-all/static/js/main.9ad173ac.js",
+    "main.js": "/health-for-all/static/js/main.d77ef3a1.js",
     "static/js/977.d7040eca.chunk.js": "/health-for-all/static/js/977.d7040eca.chunk.js",
     "static/js/455.029e8837.chunk.js": "/health-for-all/static/js/455.029e8837.chunk.js",
     "static/js/453.a94b4ce0.chunk.js": "/health-for-all/static/js/453.a94b4ce0.chunk.js",
     "index.html": "/health-for-all/index.html",
     "main.e6c13ad2.css.map": "/health-for-all/static/css/main.e6c13ad2.css.map",
-    "main.9ad173ac.js.map": "/health-for-all/static/js/main.9ad173ac.js.map",
+    "main.d77ef3a1.js.map": "/health-for-all/static/js/main.d77ef3a1.js.map",
     "977.d7040eca.chunk.js.map": "/health-for-all/static/js/977.d7040eca.chunk.js.map",
     "455.029e8837.chunk.js.map": "/health-for-all/static/js/455.029e8837.chunk.js.map",
     "453.a94b4ce0.chunk.js.map": "/health-for-all/static/js/453.a94b4ce0.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.e6c13ad2.css",
-    "static/js/main.9ad173ac.js"
+    "static/js/main.d77ef3a1.js"
   ]
 }
