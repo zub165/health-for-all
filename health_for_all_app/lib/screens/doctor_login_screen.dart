@@ -205,7 +205,20 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Icon(Icons.medical_services, size: 48, color: AppTheme.primary),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.asset(
+                          'assets/icons/icon.png',
+                          width: 88,
+                          height: 88,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.medical_services,
+                            size: 48,
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       Text(
                         _registerMode ? 'Register New Doctor' : 'Doctor Login',

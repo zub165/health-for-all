@@ -661,24 +661,92 @@ class HybridDataService {
   bool get _hasToken => _authToken != null && _authToken!.isNotEmpty;
 
   Future<List<Patient>> _fetchPatientsRemote() async {
-    final response = await _apiClient.getJson('patients/', queryParameters: {
-      'page_size': '100',
-    });
-    final data = response['data'] as List<dynamic>? ?? const [];
-    final patients =
-        data.map((item) => Patient.fromApi(item as Map<String, dynamic>)).toList();
+    final byId = <String, Patient>{};
+
+    try {
+      final response = await _apiClient.getJson('patients/', queryParameters: {
+        'page_size': '100',
+      });
+      final data = response['data'] as List<dynamic>? ??
+          response['results'] as List<dynamic>? ??
+          const [];
+      for (final item in data) {
+        if (item is Map<String, dynamic>) {
+          final p = Patient.fromApi(item);
+          byId[p.id] = p;
+        }
+      }
+    } catch (e) {
+      debugPrint('API patients fetch failed: $e');
+    }
+
+    // Merge Health Fair desk patients (same as React hybridPatientService).
+    try {
+      final hfClient = HealthApiClient(baseUrl: ApiConfig.healthFairBaseUrl);
+      hfClient.updateToken(_authToken);
+      final hf = await hfClient.getJson('patients/', queryParameters: {
+        'page_size': '200',
+      });
+      final data = hf['data'] as List<dynamic>? ??
+          hf['results'] as List<dynamic>? ??
+          const [];
+      for (final item in data) {
+        if (item is Map) {
+          final p = Patient.fromApi(Map<String, dynamic>.from(item));
+          byId.putIfAbsent(p.id, () => p);
+        }
+      }
+      hfClient.close();
+    } catch (e) {
+      debugPrint('Health-fair patients fetch failed: $e');
+    }
+
+    final patients = byId.values.toList();
     await _cachePatients(patients);
     return patients;
   }
 
   Future<List<Volunteer>> _fetchVolunteersRemote() async {
-    final response = await _apiClient.getJson('volunteers/', queryParameters: {
-      'page_size': '100',
-    });
-    final data = response['data'] as List<dynamic>? ?? const [];
-    final volunteers = data
-        .map((item) => Volunteer.fromApi(item as Map<String, dynamic>))
-        .toList();
+    final byId = <String, Volunteer>{};
+
+    try {
+      final response = await _apiClient.getJson('volunteers/', queryParameters: {
+        'page_size': '100',
+      });
+      final data = response['data'] as List<dynamic>? ??
+          response['results'] as List<dynamic>? ??
+          const [];
+      for (final item in data) {
+        if (item is Map<String, dynamic>) {
+          final v = Volunteer.fromApi(item);
+          byId[v.id] = v;
+        }
+      }
+    } catch (e) {
+      debugPrint('API volunteers fetch failed: $e');
+    }
+
+    try {
+      final hfClient = HealthApiClient(baseUrl: ApiConfig.healthFairBaseUrl);
+      hfClient.updateToken(_authToken);
+      final hf = await hfClient.getJson('volunteers/', queryParameters: {
+        'page_size': '200',
+      });
+      final data = hf['data'] as List<dynamic>? ??
+          hf['results'] as List<dynamic>? ??
+          const [];
+      for (final item in data) {
+        if (item is Map) {
+          final v = Volunteer.fromApi(Map<String, dynamic>.from(item));
+          byId.putIfAbsent(v.id, () => v);
+        }
+      }
+      hfClient.close();
+    } catch (e) {
+      debugPrint('Health-fair volunteers fetch failed: $e');
+    }
+
+    final volunteers = byId.values.toList();
     await _prefs!.setString(_volunteersKey, Volunteer.encodeList(volunteers));
     return volunteers;
   }

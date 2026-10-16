@@ -33,13 +33,18 @@ class AppShell extends StatefulWidget {
   final VoidCallback? onLogout;
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  State<AppShell> createState() => AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class AppShellState extends State<AppShell> {
   int _index = 0;
   bool _syncing = false;
   bool _railExtended = true;
+
+  void selectTab(int i) {
+    if (i < 0 || i >= widget.items.length) return;
+    setState(() => _index = i);
+  }
 
   Future<void> _syncAll() async {
     if (_syncing) return;
@@ -80,18 +85,25 @@ class _AppShellState extends State<AppShell> {
                 padding: const EdgeInsets.only(top: 12, bottom: 8),
                 child: Column(
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [AppTheme.primary, AppTheme.primaryDark],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.asset(
+                        'assets/icons/icon.png',
+                        width: 44,
+                        height: 44,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [AppTheme.primary, AppTheme.primaryDark],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.health_and_safety, color: Colors.white),
                         ),
-                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.health_and_safety, color: Colors.white),
                     ),
                     if (_railExtended && width >= 1100) ...[
                       const SizedBox(height: 8),
@@ -262,6 +274,20 @@ class _ModernAppBar extends StatelessWidget {
                     icon: const Icon(Icons.menu_rounded, color: Colors.white),
                   ),
                 const SizedBox(width: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    'assets/icons/icon.png',
+                    width: 36,
+                    height: 36,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.health_and_safety,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
