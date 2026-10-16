@@ -57,13 +57,16 @@ cfg = {
     "appName": g("APP_NAME", "Health For All"),
 }
 
-out_js = root / "website" / "paypal-config.js"
-out_js.write_text(
+js_body = (
     "/* Generated from .env — run: website/generate-from-env.sh */\n"
     "window.HFA_PAYPAL = "
     + json.dumps(cfg, indent=2)
     + ";\n"
 )
+out_js = root / "website" / "paypal-config.js"
+out_js.write_text(js_body)
+# Cache-bust filename referenced by pay.html
+(root / "website" / "paypal-config.admin2.js").write_text(js_body)
 
 key_props = root / "android" / "key.properties"
 key_props.parent.mkdir(parents=True, exist_ok=True)

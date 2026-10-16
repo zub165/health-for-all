@@ -23,6 +23,7 @@ cd "$WORK/site"
 
 cp -f "$ROOT/website/"*.html .
 cp -f "$ROOT/website/paypal-config.js" .
+cp -f "$ROOT/website/paypal-config.admin2.js" . 2>/dev/null || cp -f "$ROOT/website/paypal-config.js" paypal-config.admin2.js
 cp -f "$ROOT/website/app-ads.txt" .
 touch .nojekyll
 cp -f "$ROOT/assets/icons/icon.png" favicon.png
