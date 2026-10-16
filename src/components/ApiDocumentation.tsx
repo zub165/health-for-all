@@ -167,7 +167,7 @@ const endpointGroups: { title: string; endpoints: EndpointDoc[] }[] = [
         path: '/api/volunteers/',
         description: 'Register volunteer (alias)',
         status: 'live',
-        body: {
+        parameters: {
           full_name: 'string (required)',
           email: 'string (required)',
           phone: 'string (required)',
@@ -233,7 +233,7 @@ const endpointGroups: { title: string; endpoints: EndpointDoc[] }[] = [
         path: '/health-fair/volunteers/',
         description: 'Register Health Fair volunteer',
         status: 'live',
-        body: {
+        parameters: {
           full_name: 'string (required)',
           email: 'string (required)',
           phone: 'string (required)',
