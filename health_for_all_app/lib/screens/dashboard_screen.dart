@@ -75,10 +75,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 fontWeight: FontWeight.bold,
               ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         Text(
           'Live KPIs from api.mywaitime.com (GoDaddy) with local offline cache.',
           style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.tips_and_updates_outlined,
+                color: Theme.of(context).colorScheme.primary),
+            title: const Text('Quick tip'),
+            subtitle: const Text(
+              'Patients → Select → search “EE” → Select all → Delete all matches. '
+              'Assess tab includes vitals, HbA1c, lipids, carotid Doppler, and PHQ/GAD questions.',
+            ),
+          ),
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),

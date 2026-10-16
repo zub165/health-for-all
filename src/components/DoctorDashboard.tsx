@@ -31,6 +31,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -44,6 +46,8 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  SelectAll as SelectAllIcon,
+  Checklist as ChecklistIcon,
 } from '@mui/icons-material';
 import { Patient, Vitals } from '../types';
 import { patientApi, vitalsApi } from '../services/api';
@@ -176,6 +180,9 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
   const [editFormData, setEditFormData] = useState<Partial<Patient>>({});
   const [editLoading, setEditLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Sync shared hybrid patients into doctor UI shape
   useEffect(() => {
@@ -474,6 +481,60 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
     } finally {
       setEditLoading(false);
     }
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedIds(new Set(filteredPatients.map((p) => p.id!).filter(Boolean)));
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (
+      !window.confirm(
+        `Delete ${count} selected patient${count === 1 ? '' : 's'}? This removes them from GoDaddy and this browser.`
+      )
+    ) {
+      return;
+    }
+    setBulkDeleting(true);
+    let deleted = 0;
+    let failed = 0;
+    for (const id of Array.from(selectedIds)) {
+      try {
+        const response = await patientApi.delete(id);
+        if (response.success || (response.message || '').includes('not found')) {
+          deleted += 1;
+        } else {
+          failed += 1;
+        }
+      } catch {
+        // Still remove from UI / local hybrid
+        deleted += 1;
+      }
+    }
+    setPatients((prev) => prev.filter((p) => !selectedIds.has(p.id!)));
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+    setBulkDeleting(false);
+    void refreshPatients();
+    notifyAppDataChanged();
+    alert(
+      failed === 0
+        ? `Deleted ${deleted} patient${deleted === 1 ? '' : 's'}.`
+        : `Deleted ${deleted}, ${failed} failed.`
+    );
   };
 
   // Delete Patient Functions
@@ -1055,17 +1116,64 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
           </Alert>
         )}
 
-        {/* Search Bar */}
-        <Box sx={{ mb: 4 }}>
+        {/* Search + bulk select */}
+        <Box sx={{ mb: 2 }}>
           <TextField
             fullWidth
-            placeholder="Search patients by name, email, or phone number..."
+            placeholder="Search patients by name, email, or phone (e.g. EE)…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             InputProps={{
               startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
             }}
           />
+        </Box>
+        <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+          {!selectionMode ? (
+            <Button
+              variant="outlined"
+              startIcon={<ChecklistIcon />}
+              onClick={() => setSelectionMode(true)}
+              disabled={filteredPatients.length === 0}
+            >
+              Select to delete
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="contained"
+                startIcon={<SelectAllIcon />}
+                onClick={selectAllFiltered}
+                disabled={filteredPatients.length === 0 || bulkDeleting}
+              >
+                Select all ({filteredPatients.length})
+              </Button>
+              <Button variant="outlined" onClick={clearSelection} disabled={bulkDeleting}>
+                Clear
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={bulkDeleting ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
+                onClick={() => void handleBulkDelete()}
+                disabled={selectedIds.size === 0 || bulkDeleting}
+              >
+                Delete selected ({selectedIds.size})
+              </Button>
+              <Button
+                onClick={() => {
+                  setSelectionMode(false);
+                  clearSelection();
+                }}
+                disabled={bulkDeleting}
+              >
+                Cancel
+              </Button>
+              <Typography variant="body2" color="text.secondary">
+                Tip: search “EE” first, then Select all to delete only matches.
+              </Typography>
+            </>
+          )}
         </Box>
 
         {/* Enhanced Patients List with Tabs */}
@@ -1124,6 +1232,8 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
                     height: '100%', 
                     display: 'flex', 
                     flexDirection: 'column',
+                    outline: selectionMode && selectedIds.has(patient.id!) ? '2px solid' : undefined,
+                    outlineColor: 'error.main',
                     transition: 'all 0.3s ease',
                     '&:hover': {
                       transform: 'translateY(-4px)',
@@ -1131,6 +1241,19 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
                     }
                   }}>
                     <CardContent sx={{ flexGrow: 1 }}>
+                      {selectionMode && (
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={selectedIds.has(patient.id!)}
+                              onChange={() => toggleSelected(patient.id!)}
+                              color="error"
+                            />
+                          }
+                          label="Select"
+                          sx={{ mb: 1 }}
+                        />
+                      )}
                       {/* Patient Header */}
                     <Box display="flex" alignItems="center" mb={2}>
                       <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />

@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config/api_config.dart';
 import 'screens/ai_decisions_screen.dart';
 import 'screens/assessments_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/doctor_login_screen.dart';
 import 'screens/lab_screen.dart';
 import 'screens/patients_screen.dart';
 import 'screens/volunteers_screen.dart';
 import 'services/hybrid_data_service.dart';
+import 'theme/app_theme.dart';
+import 'widgets/app_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarIconBrightness: Brightness.dark,
-    statusBarBrightness: Brightness.light,
+    statusBarIconBrightness: Brightness.light,
+    statusBarBrightness: Brightness.dark,
     systemNavigationBarIconBrightness: Brightness.dark,
     systemNavigationBarContrastEnforced: false,
   ));
@@ -40,131 +44,113 @@ class HealthForAllApp extends StatelessWidget {
     return MaterialApp(
       title: 'Health For All',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1565C0)),
-        useMaterial3: true,
-        scaffoldBackgroundColor: Colors.grey.shade50,
-      ),
-      home: const _MainNavigationShell(),
+      theme: AppTheme.light(),
+      home: const _AuthGate(),
     );
   }
 }
 
-class _MainNavigationShell extends StatefulWidget {
-  const _MainNavigationShell();
+class _AuthGate extends StatefulWidget {
+  const _AuthGate();
 
   @override
-  State<_MainNavigationShell> createState() => _MainNavigationShellState();
+  State<_AuthGate> createState() => _AuthGateState();
 }
 
-class _MainNavigationShellState extends State<_MainNavigationShell> {
-  int _currentIndex = 0;
-  bool _syncing = false;
+class _AuthGateState extends State<_AuthGate> {
+  bool _loading = true;
+  String? _doctorName;
 
-  static const _screens = <Widget>[
-    DashboardScreen(),
-    PatientsScreen(),
-    VolunteersScreen(),
-    AiDecisionsScreen(),
-    AssessmentsScreen(),
-    LabScreen(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _restoreSession();
+  }
 
-  static const _titles = <String>[
-    'Dashboard',
-    'Patients',
-    'Volunteers',
-    'AI Decisions',
-    'Assessments',
-    'Lab & ICD-10',
-  ];
+  Future<void> _restoreSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final loggedIn = prefs.getBool('doctor_logged_in') ?? false;
+    final name = prefs.getString('doctor_name');
+    if (!mounted) return;
+    setState(() {
+      _doctorName = loggedIn && name != null && name.isNotEmpty ? name : null;
+      _loading = false;
+    });
+  }
 
-  static const _destinations = <NavigationDestination>[
-    NavigationDestination(
-      icon: Icon(Icons.dashboard_outlined),
-      selectedIcon: Icon(Icons.dashboard),
-      label: 'Home',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.people_outline),
-      selectedIcon: Icon(Icons.people),
-      label: 'Patients',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.volunteer_activism_outlined),
-      selectedIcon: Icon(Icons.volunteer_activism),
-      label: 'Volunteers',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.psychology_outlined),
-      selectedIcon: Icon(Icons.psychology),
-      label: 'AI',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.monitor_heart_outlined),
-      selectedIcon: Icon(Icons.monitor_heart),
-      label: 'Assess',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.science_outlined),
-      selectedIcon: Icon(Icons.science),
-      label: 'Lab',
-    ),
-  ];
+  Future<void> _onLoggedIn(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('doctor_logged_in', true);
+    await prefs.setString('doctor_name', name);
+    if (!mounted) return;
+    setState(() => _doctorName = name);
+  }
 
-  Future<void> _syncAll() async {
-    if (_syncing) return;
-    setState(() => _syncing = true);
-    try {
-      await HybridDataService.instance.syncAll();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Synced with api.mywaitime.com')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sync failed: $error')),
-      );
-    } finally {
-      if (mounted) setState(() => _syncing = false);
-    }
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('doctor_logged_in', false);
+    await prefs.remove('doctor_name');
+    if (!mounted) return;
+    setState(() => _doctorName = null);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_titles[_currentIndex]),
-        actions: [
-          IconButton(
-            tooltip: 'Sync with GoDaddy backend',
-            onPressed: _syncing ? null : _syncAll,
-            icon: _syncing
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.sync),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: IndexedStack(
-          index: _currentIndex,
-          children: _screens,
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_doctorName == null) {
+      return DoctorLoginScreen(onLoggedIn: _onLoggedIn);
+    }
+    return AppShell(
+      doctorName: _doctorName!,
+      onLogout: _logout,
+      items: const [
+        AppNavItem(
+          title: 'Dashboard',
+          shortLabel: 'Home',
+          icon: Icons.home_outlined,
+          selectedIcon: Icons.home_rounded,
+          screen: DashboardScreen(),
         ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        destinations: _destinations,
-        onDestinationSelected: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-      ),
+        AppNavItem(
+          title: 'Patients',
+          shortLabel: 'Patients',
+          icon: Icons.people_outline_rounded,
+          selectedIcon: Icons.people_rounded,
+          screen: PatientsScreen(),
+        ),
+        AppNavItem(
+          title: 'Volunteers',
+          shortLabel: 'Volunteer',
+          icon: Icons.volunteer_activism_outlined,
+          selectedIcon: Icons.volunteer_activism,
+          screen: VolunteersScreen(),
+        ),
+        AppNavItem(
+          title: 'AI Decisions',
+          shortLabel: 'AI',
+          icon: Icons.psychology_outlined,
+          selectedIcon: Icons.psychology_rounded,
+          screen: AiDecisionsScreen(),
+        ),
+        AppNavItem(
+          title: 'Health Assessment',
+          shortLabel: 'Assess',
+          icon: Icons.monitor_heart_outlined,
+          selectedIcon: Icons.monitor_heart,
+          screen: AssessmentsScreen(),
+        ),
+        AppNavItem(
+          title: 'Lab & ICD-10',
+          shortLabel: 'Lab',
+          icon: Icons.science_outlined,
+          selectedIcon: Icons.science_rounded,
+          screen: LabScreen(),
+        ),
+      ],
     );
   }
 }

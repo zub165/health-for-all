@@ -15,18 +15,37 @@ class PatientsScreen extends StatefulWidget {
 class _PatientsScreenState extends State<PatientsScreen> {
   final List<Patient> _patients = [];
   final Set<String> _selectedIds = {};
+  final _searchController = TextEditingController();
   bool _loading = true;
   bool _syncing = false;
   bool _selectionMode = false;
   bool _deleting = false;
 
-  bool get _allSelected =>
-      _patients.isNotEmpty && _selectedIds.length == _patients.length;
+  List<Patient> get _filtered {
+    final q = _searchController.text.trim().toLowerCase();
+    if (q.isEmpty) return _patients;
+    return _patients.where((p) {
+      return p.fullName.toLowerCase().contains(q) ||
+          (p.email ?? '').toLowerCase().contains(q) ||
+          (p.phone ?? '').toLowerCase().contains(q);
+    }).toList();
+  }
+
+  bool get _allSelected {
+    final list = _filtered;
+    return list.isNotEmpty && list.every((p) => _selectedIds.contains(p.id));
+  }
 
   @override
   void initState() {
     super.initState();
     _loadPatients();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPatients() async {
@@ -184,7 +203,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
     setState(() {
       _selectedIds
         ..clear()
-        ..addAll(_patients.map((p) => p.id));
+        ..addAll(_filtered.map((p) => p.id));
     });
   }
 
@@ -251,12 +270,13 @@ class _PatientsScreenState extends State<PatientsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final list = _filtered;
     return Column(
       children: [
         if (_selectionMode)
           _SelectionToolbar(
             selectedCount: _selectedIds.length,
-            totalCount: _patients.length,
+            totalCount: list.length,
             allSelected: _allSelected,
             deleting: _deleting,
             onSelectAll: _allSelected ? _clearSelection : _selectAll,
@@ -270,6 +290,36 @@ class _PatientsScreenState extends State<PatientsScreen> {
             refreshing: _syncing,
             onSelect: _patients.isEmpty ? null : () => _enterSelectionMode(),
           ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search name/email/phone (e.g. EE)',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {});
+                      },
+                    ),
+              border: const OutlineInputBorder(),
+              isDense: true,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ),
+        if (_selectionMode && _searchController.text.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              'Select all applies to ${list.length} filtered match${list.length == 1 ? '' : 'es'}.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
         const Divider(height: 1),
         if (_loading || _deleting) const LinearProgressIndicator(minHeight: 3),
         Expanded(
@@ -277,31 +327,33 @@ class _PatientsScreenState extends State<PatientsScreen> {
               ? (_loading
                   ? const Center(child: Text('Loading patients from GoDaddy…'))
                   : const _EmptyPatientState())
-              : RefreshIndicator(
-                  onRefresh: _selectionMode ? () async {} : _syncPatients,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _patients.length,
-                    itemBuilder: (context, index) {
-                      final patient = _patients[index];
-                      final selected = _selectedIds.contains(patient.id);
-                      return _PatientListTile(
-                        patient: patient,
-                        selectionMode: _selectionMode,
-                        selected: selected,
-                        onTap: () => _openPatientDetails(patient),
-                        onLongPress: () {
-                          if (!_selectionMode) {
-                            _enterSelectionMode(initialId: patient.id);
-                          }
+              : list.isEmpty
+                  ? const Center(child: Text('No patients match this search.'))
+                  : RefreshIndicator(
+                      onRefresh: _selectionMode ? () async {} : _syncPatients,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: list.length,
+                        itemBuilder: (context, index) {
+                          final patient = list[index];
+                          final selected = _selectedIds.contains(patient.id);
+                          return _PatientListTile(
+                            patient: patient,
+                            selectionMode: _selectionMode,
+                            selected: selected,
+                            onTap: () => _openPatientDetails(patient),
+                            onLongPress: () {
+                              if (!_selectionMode) {
+                                _enterSelectionMode(initialId: patient.id);
+                              }
+                            },
+                            onToggleSelect: () => _toggleSelected(patient.id),
+                            onEdit: () => _editPatient(patient),
+                            onDelete: () => _confirmDelete(patient),
+                          );
                         },
-                        onToggleSelect: () => _toggleSelected(patient.id),
-                        onEdit: () => _editPatient(patient),
-                        onDelete: () => _confirmDelete(patient),
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                    ),
         ),
       ],
     );
@@ -336,11 +388,12 @@ class _PatientsToolbar extends StatelessWidget {
             ),
           ),
           if (onSelect != null)
-            IconButton(
-              tooltip: 'Select patients to delete',
+            OutlinedButton.icon(
               onPressed: onSelect,
               icon: const Icon(Icons.checklist),
+              label: const Text('Select'),
             ),
+          const SizedBox(width: 8),
           IconButton(
             tooltip: 'Sync patients',
             onPressed: refreshing ? null : onRefresh,

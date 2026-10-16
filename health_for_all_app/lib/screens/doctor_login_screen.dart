@@ -99,6 +99,7 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
             '${data?['first_name'] ?? 'Doctor'} ${data?['last_name'] ?? ''}'.trim();
 
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('doctor_logged_in', true);
     await prefs.setString('doctor_email', email);
     await prefs.setString('doctor_name', displayName);
     if (data?['token'] != null) {

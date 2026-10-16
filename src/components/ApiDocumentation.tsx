@@ -336,6 +336,21 @@ const ApiDocumentation: React.FC = () => {
             </Typography>
           </Alert>
 
+          <Alert severity="success" sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Doctor login (reviewer / admin)
+            </Typography>
+            <Typography variant="body2" component="div">
+              Allowlisted emails (any password 8+ characters on web HIPAA gate):
+              <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+                <li><code>zub165@yahoo.com</code></li>
+                <li><code>admin@healthforall.org</code></li>
+                <li><code>doctor@healthforall.org</code></li>
+              </ul>
+              Prefer registering once via <strong>Register New Doctor</strong> so GoDaddy stores the account.
+            </Typography>
+          </Alert>
+
           <Card sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>

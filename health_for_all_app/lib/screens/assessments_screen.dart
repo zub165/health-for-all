@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../models/patient.dart';
 import '../services/hybrid_data_service.dart';
+import '../widgets/mental_health_screening.dart';
 
+/// Full Health Fair assessment — mirrors React `VitalsTracking`:
+/// vitals, HbA1c, lipid panel, carotid Doppler, mental health scores.
 class AssessmentsScreen extends StatefulWidget {
   const AssessmentsScreen({super.key});
 
@@ -13,12 +16,37 @@ class AssessmentsScreen extends StatefulWidget {
 class _AssessmentsScreenState extends State<AssessmentsScreen> {
   final _formKey = GlobalKey<FormState>();
 
+  // Core vitals
   final _systolicController = TextEditingController();
   final _diastolicController = TextEditingController();
+  final _heartRateController = TextEditingController();
+  final _temperatureController = TextEditingController();
+  final _spo2Controller = TextEditingController();
+  final _weightController = TextEditingController();
+  final _heightController = TextEditingController();
   final _glucoseController = TextEditingController();
   final _bmiController = TextEditingController();
-  final _phq9Controller = TextEditingController();
+
+  // Labs
+  final _hba1cController = TextEditingController();
+  final _totalCholController = TextEditingController();
+  final _ldlController = TextEditingController();
+  final _hdlController = TextEditingController();
+  final _trigController = TextEditingController();
+
   final _notesController = TextEditingController();
+  final _mentalHealthKey = GlobalKey<MentalHealthScreeningFormState>();
+  MentalHealthScreeningResult? _mentalHealth;
+
+  static const _carotidOptions = <String>[
+    'Normal',
+    'Mild stenosis (< 50%)',
+    'Moderate stenosis (50-69%)',
+    'Severe stenosis (70-99%)',
+    'Occlusion (100%)',
+  ];
+
+  String? _carotidDoppler;
 
   List<Patient> _patients = const [];
   String? _selectedPatientId;
@@ -58,13 +86,49 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
 
   @override
   void dispose() {
-    _systolicController.dispose();
-    _diastolicController.dispose();
-    _glucoseController.dispose();
-    _bmiController.dispose();
-    _phq9Controller.dispose();
-    _notesController.dispose();
+    for (final c in [
+      _systolicController,
+      _diastolicController,
+      _heartRateController,
+      _temperatureController,
+      _spo2Controller,
+      _weightController,
+      _heightController,
+      _glucoseController,
+      _bmiController,
+      _hba1cController,
+      _totalCholController,
+      _ldlController,
+      _hdlController,
+      _trigController,
+      _notesController,
+    ]) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  double? _parseOptional(TextEditingController c) {
+    final t = c.text.trim();
+    if (t.isEmpty) return null;
+    return double.tryParse(t);
+  }
+
+  void _maybeComputeBmi() {
+    final w = _parseOptional(_weightController);
+    final h = _parseOptional(_heightController);
+    if (w == null || h == null || h <= 0) return;
+    // weight lbs, height inches (same as React health fair)
+    final bmi = (w / (h * h)) * 703;
+    _bmiController.text = bmi.toStringAsFixed(1);
+  }
+
+  String _mentalHealthSeverity(double score) {
+    if (score <= 4) return 'Minimal depression';
+    if (score <= 9) return 'Mild depression';
+    if (score <= 14) return 'Moderate depression';
+    if (score <= 19) return 'Moderately severe depression';
+    return 'Severe depression';
   }
 
   Future<void> _runAssessment() async {
@@ -82,18 +146,38 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
 
     final systolic = double.parse(_systolicController.text.trim());
     final diastolic = double.parse(_diastolicController.text.trim());
-    final glucose = double.parse(_glucoseController.text.trim());
-    final bmi = double.parse(_bmiController.text.trim());
-    final phq9 = double.parse(_phq9Controller.text.trim());
+    final glucose = _parseOptional(_glucoseController) ?? 100;
+    final bmi = _parseOptional(_bmiController) ?? 22;
+    final mh = _mentalHealth ?? _mentalHealthKey.currentState?.result;
+    final phq2 = mh?.phq2Score.toDouble();
+    final gad2 = mh?.gad2Score.toDouble();
+    final phq9 = (mh?.primaryDepressionScore ?? 0).toDouble();
+    final gad7 = mh?.gad7Score?.toDouble();
+    final hba1c = _parseOptional(_hba1cController);
+    final totalChol = _parseOptional(_totalCholController);
+    final ldl = _parseOptional(_ldlController);
+    final hdl = _parseOptional(_hdlController);
+    final trig = _parseOptional(_trigController);
+    final hr = _parseOptional(_heartRateController);
+    final temp = _parseOptional(_temperatureController);
+    final spo2 = _parseOptional(_spo2Controller);
+    final weight = _parseOptional(_weightController);
+    final height = _parseOptional(_heightController);
 
     final bpScore = ((systolic - 120).abs() + (diastolic - 80).abs()) / 40;
     final glucoseScore = (glucose - 100).abs() / 40;
     final bmiScore = (bmi - 22).abs() / 6;
     final mentalHealthScore = phq9 / 10;
+    final hba1cScore = hba1c == null ? 0.0 : ((hba1c - 5.4).abs() / 2).clamp(0, 2);
+    final lipidScore = () {
+      if (ldl == null && totalChol == null) return 0.0;
+      final l = ldl ?? (totalChol! - 50);
+      return ((l - 100).abs() / 50).clamp(0, 2);
+    }();
 
-    final composite = [bpScore, glucoseScore, bmiScore, mentalHealthScore]
-        .fold<double>(0, (sum, value) => sum + value);
-    final normalized = (composite / 4).clamp(0, 1);
+    final parts = [bpScore, glucoseScore, bmiScore, mentalHealthScore, hba1cScore, lipidScore];
+    final composite = parts.fold<double>(0, (sum, value) => sum + value);
+    final normalized = (composite / parts.length).clamp(0, 1);
     final risk = (normalized * 100).clamp(0, 100);
 
     final level = () {
@@ -104,11 +188,21 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
 
     final recommendation = <String>[
       if (risk >= 66)
-        'Immediate follow-up recommended: elevated vitals and/or PHQ-9 indicate high risk.',
+        'Immediate follow-up recommended: elevated vitals and/or screening scores indicate high risk.',
       if (bmi >= 30) 'Offer healthy lifestyle coaching; BMI suggests obesity.',
       if (glucose >= 140) 'Screen for diabetes or impaired glucose tolerance.',
+      if (hba1c != null && hba1c >= 6.5) 'HbA1c suggests diabetes — confirm and refer.',
+      if (hba1c != null && hba1c >= 5.7 && hba1c < 6.5)
+        'HbA1c in prediabetes range — lifestyle counseling.',
+      if (ldl != null && ldl >= 160) 'Elevated LDL — discuss lipid management.',
+      if (totalChol != null && totalChol >= 240) 'High total cholesterol — follow lipid panel.',
+      if (_carotidDoppler != null &&
+          _carotidDoppler != 'Normal' &&
+          _carotidDoppler!.isNotEmpty)
+        'Abnormal carotid Doppler ($_carotidDoppler) — cardiology / vascular follow-up.',
       if (phq9 >= 10)
-        'Provide mental health resources and consider counseling referral.',
+        'Provide mental health resources and consider counseling referral (${_mentalHealthSeverity(phq9)}).',
+      if (gad7 != null && gad7 >= 10) 'Elevated GAD-7 — anxiety follow-up recommended.',
       if (risk < 33)
         'Encourage routine annual screening and wellness education.',
       if (_notesController.text.trim().isNotEmpty)
@@ -131,9 +225,23 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
         patientId: selectedPatient.id,
         systolic: systolic,
         diastolic: diastolic,
+        heartRate: hr,
+        temperature: temp,
+        oxygenSaturation: spo2,
+        weight: weight,
+        height: height,
         glucose: glucose,
         bmi: bmi,
+        hba1c: hba1c,
+        totalCholesterol: totalChol,
+        ldlCholesterol: ldl,
+        hdlCholesterol: hdl,
+        triglycerides: trig,
+        carotidDoppler: _carotidDoppler,
+        phq2: phq2,
+        gad2: gad2,
         phq9: phq9,
+        gad7: gad7,
         riskScore: _riskScore!,
         riskLevel: level,
         notes: _notesController.text.trim().isEmpty
@@ -163,13 +271,29 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
 
   void _resetForm() {
     _formKey.currentState?.reset();
-    _systolicController.clear();
-    _diastolicController.clear();
-    _glucoseController.clear();
-    _bmiController.clear();
-    _phq9Controller.clear();
-    _notesController.clear();
+    for (final c in [
+      _systolicController,
+      _diastolicController,
+      _heartRateController,
+      _temperatureController,
+      _spo2Controller,
+      _weightController,
+      _heightController,
+      _glucoseController,
+      _bmiController,
+      _hba1cController,
+      _totalCholController,
+      _ldlController,
+      _hdlController,
+      _trigController,
+      _notesController,
+    ]) {
+      c.clear();
+    }
+    _mentalHealthKey.currentState?.reset();
     setState(() {
+      _carotidDoppler = null;
+      _mentalHealth = null;
       _riskScore = null;
       _riskLevel = null;
       _recommendations = const [];
@@ -180,51 +304,59 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cards = <Widget>[
-      _buildPatientPicker(context),
-      const SizedBox(height: 16),
-      _buildVitalsCard(context),
-      const SizedBox(height: 16),
-      _buildMentalHealthCard(context),
-      const SizedBox(height: 16),
-      _buildNotesCard(context),
-      const SizedBox(height: 16),
-      _buildResultsCard(context),
-    ];
-
     return Column(
       children: [
         if (_loadingPatients || _submitting)
           const LinearProgressIndicator(minHeight: 3),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth > 900) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 5,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(children: cards.sublist(0, 4)),
+          child: Form(
+            key: _formKey,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final left = <Widget>[
+                  _buildPatientPicker(context),
+                  const SizedBox(height: 16),
+                  _buildVitalsCard(context),
+                  const SizedBox(height: 16),
+                  _buildLabsCard(context),
+                  const SizedBox(height: 16),
+                  _buildCarotidCard(context),
+                  const SizedBox(height: 16),
+                  _buildMentalHealthCard(context),
+                  const SizedBox(height: 16),
+                  _buildNotesCard(context),
+                  const SizedBox(height: 16),
+                  _buildActions(context),
+                ];
+                final right = <Widget>[_buildResultsCard(context)];
+
+                if (constraints.maxWidth > 900) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(children: left),
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      flex: 4,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: cards.sublist(4).first,
+                      Expanded(
+                        flex: 4,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(children: right),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  );
+                }
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [...left, const SizedBox(height: 16), ...right],
                 );
-              }
-              return ListView(
-                padding: const EdgeInsets.all(16),
-                children: cards,
-              );
-            },
+              },
+            ),
           ),
         ),
       ],
@@ -242,7 +374,8 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
             Text('Patient', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
-              'Assessment results are posted to GoDaddy /api/vitals/ for the selected patient.',
+              'Same fields as web Doctor → Record Vitals: vitals, HbA1c, lipid panel, '
+              'carotid Doppler, mental health scores. Saved to /api/vitals/.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
@@ -277,72 +410,77 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
       elevation: 0,
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Vitals & Biometrics',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Capture key vitals for rapid risk assessment. Values mirror the web workflow.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  _numberField(
-                    controller: _systolicController,
-                    label: 'Blood Pressure (Systolic)',
-                    suffix: 'mmHg',
-                  ),
-                  _numberField(
-                    controller: _diastolicController,
-                    label: 'Blood Pressure (Diastolic)',
-                    suffix: 'mmHg',
-                  ),
-                  _numberField(
-                    controller: _glucoseController,
-                    label: 'Glucose',
-                    suffix: 'mg/dL',
-                  ),
-                  _numberField(
-                    controller: _bmiController,
-                    label: 'BMI',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _submitting ? null : _runAssessment,
-                      icon: const Icon(Icons.analytics),
-                      label: Text(_submitting ? 'Saving…' : 'Run & Save Assessment'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  OutlinedButton.icon(
-                    onPressed: _resetForm,
-                    icon: const Icon(Icons.restart_alt),
-                    label: const Text('Reset'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Vitals', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(
+              'Blood pressure required; other vitals optional (matches web).',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _numberField(
+                  controller: _systolicController,
+                  label: 'BP Systolic',
+                  suffix: 'mmHg',
+                  required: true,
+                ),
+                _numberField(
+                  controller: _diastolicController,
+                  label: 'BP Diastolic',
+                  suffix: 'mmHg',
+                  required: true,
+                ),
+                _numberField(
+                  controller: _heartRateController,
+                  label: 'Heart Rate',
+                  suffix: 'bpm',
+                ),
+                _numberField(
+                  controller: _temperatureController,
+                  label: 'Temperature',
+                  suffix: '°F',
+                ),
+                _numberField(
+                  controller: _spo2Controller,
+                  label: 'Oxygen Saturation',
+                  suffix: '%',
+                ),
+                _numberField(
+                  controller: _weightController,
+                  label: 'Weight',
+                  suffix: 'lbs',
+                  onChanged: (_) => _maybeComputeBmi(),
+                ),
+                _numberField(
+                  controller: _heightController,
+                  label: 'Height',
+                  suffix: 'in',
+                  onChanged: (_) => _maybeComputeBmi(),
+                ),
+                _numberField(
+                  controller: _glucoseController,
+                  label: 'Blood Sugar / Glucose',
+                  suffix: 'mg/dL',
+                ),
+                _numberField(
+                  controller: _bmiController,
+                  label: 'BMI',
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildMentalHealthCard(BuildContext context) {
+  Widget _buildLabsCard(BuildContext context) {
     return Card(
       elevation: 0,
       child: Padding(
@@ -350,23 +488,92 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text('Labs — HbA1c & Lipid Panel', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
             Text(
-              'Mental Health Screening',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Capture PHQ-9 score to flag patient mental health support needs.',
+              'Optional. Normal HbA1c <5.7%; lipid targets match web helpers.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
-            _numberField(
-              controller: _phq9Controller,
-              label: 'PHQ-9 Score',
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _numberField(
+                  controller: _hba1cController,
+                  label: 'HbA1c',
+                  suffix: '%',
+                  helper: 'Normal <5.7 · Prediabetes 5.7–6.4 · Diabetes ≥6.5',
+                ),
+                _numberField(
+                  controller: _totalCholController,
+                  label: 'Total Cholesterol',
+                  suffix: 'mg/dL',
+                  helper: 'Desirable <200',
+                ),
+                _numberField(
+                  controller: _ldlController,
+                  label: 'LDL Cholesterol',
+                  suffix: 'mg/dL',
+                  helper: 'Optimal <100',
+                ),
+                _numberField(
+                  controller: _hdlController,
+                  label: 'HDL Cholesterol',
+                  suffix: 'mg/dL',
+                  helper: 'Optimal ≥60',
+                ),
+                _numberField(
+                  controller: _trigController,
+                  label: 'Triglycerides',
+                  suffix: 'mg/dL',
+                  helper: 'Normal <150',
+                ),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCarotidCard(BuildContext context) {
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Carotid Doppler', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              // ignore: deprecated_member_use
+              value: _carotidDoppler ?? '',
+              decoration: const InputDecoration(
+                labelText: 'Carotid Doppler Result (optional)',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('Not recorded')),
+                ..._carotidOptions.map(
+                  (o) => DropdownMenuItem(value: o, child: Text(o)),
+                ),
+              ],
+              onChanged: (v) => setState(
+                () => _carotidDoppler = (v == null || v.isEmpty) ? null : v,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMentalHealthCard(BuildContext context) {
+    return MentalHealthScreeningForm(
+      key: _mentalHealthKey,
+      onChanged: (result) => setState(() => _mentalHealth = result),
     );
   }
 
@@ -378,10 +585,7 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Field Notes',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('Field Notes', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
             TextFormField(
               controller: _notesController,
@@ -394,6 +598,26 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: _submitting ? null : _runAssessment,
+            icon: const Icon(Icons.analytics),
+            label: Text(_submitting ? 'Saving…' : 'Run & Save Assessment'),
+          ),
+        ),
+        const SizedBox(width: 12),
+        OutlinedButton.icon(
+          onPressed: _resetForm,
+          icon: const Icon(Icons.restart_alt),
+          label: const Text('Reset'),
+        ),
+      ],
     );
   }
 
@@ -438,7 +662,7 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
                 children: [
                   CircleAvatar(
                     radius: 28,
-                    backgroundColor: _riskColor.withOpacity(0.15),
+                    backgroundColor: _riskColor.withValues(alpha: 0.15),
                     child: Text(
                       _riskScore!.toStringAsFixed(0),
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -497,7 +721,7 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.all(24),
@@ -510,8 +734,8 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Select a patient, enter vitals, then press "Run & Save Assessment". '
-            'Results sync to the GoDaddy backend when online.',
+            'Enter vitals, HbA1c, lipid panel, carotid Doppler, and mental health '
+            'scores, then press Run & Save Assessment.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
@@ -523,23 +747,28 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
     required TextEditingController controller,
     required String label,
     String? suffix,
+    String? helper,
+    bool required = false,
+    ValueChanged<String>? onChanged,
   }) {
     return SizedBox(
       width: 220,
       child: TextFormField(
         controller: controller,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: onChanged,
         decoration: InputDecoration(
           labelText: label,
           suffixText: suffix,
+          helperText: helper,
           border: const OutlineInputBorder(),
         ),
         validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return 'Required';
+          final t = value?.trim() ?? '';
+          if (t.isEmpty) {
+            return required ? 'Required' : null;
           }
-          final parsed = double.tryParse(value.trim());
-          if (parsed == null) {
+          if (double.tryParse(t) == null) {
             return 'Invalid number';
           }
           return null;

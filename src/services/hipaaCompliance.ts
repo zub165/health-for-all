@@ -279,7 +279,8 @@ export const initializeHIPAACompliance = (): HIPAAComplianceService => {
     authorizedUsers: [
       'doctor@healthforall.org',
       'admin@healthforall.org',
-      'volunteer@healthforall.org'
+      'volunteer@healthforall.org',
+      'zub165@yahoo.com',
     ]
   };
   
