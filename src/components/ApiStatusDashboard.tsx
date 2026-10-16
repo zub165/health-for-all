@@ -21,6 +21,7 @@ import {
   Psychology,
   Science,
   LocalHospital,
+  VolunteerActivism,
 } from '@mui/icons-material';
 import { getApiBaseUrl } from '../config/api';
 import ExportActions from './ExportActions';
@@ -107,6 +108,14 @@ const ApiStatusDashboard: React.FC = () => {
       endpoint: `${base}/api/ai/health/`,
       icon: <Psychology />,
     },
+    {
+      id: 'volunteers',
+      name: 'Volunteers',
+      status: 'checking',
+      description: 'Health Fair volunteers GET/POST',
+      endpoint: `${base}/health-fair/volunteers/`,
+      icon: <VolunteerActivism />,
+    },
   ]);
   const [lastChecked, setLastChecked] = useState<string>('');
   const [overallStatus, setOverallStatus] = useState<'online' | 'offline' | 'partial'>('partial');
@@ -146,6 +155,7 @@ const ApiStatusDashboard: React.FC = () => {
           required: true,
         },
         { id: 'nutrition', url: `${base}/api/nutrition/health/`, required: false },
+        { id: 'volunteers', url: `${base}/health-fair/volunteers/`, required: false },
       ].map(async (item) => {
         const ok = await ping(item.url);
         return { ...item, ok };

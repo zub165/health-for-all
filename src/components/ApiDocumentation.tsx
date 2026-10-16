@@ -158,9 +158,25 @@ const endpointGroups: { title: string; endpoints: EndpointDoc[] }[] = [
       {
         method: 'GET',
         path: '/api/volunteers/',
-        description: 'Volunteers (not deployed on GoDaddy yet)',
-        status: 'missing',
-        notes: 'Returns 404. App uses hybrid local storage for volunteers.',
+        description: 'Volunteers list (alias)',
+        status: 'live',
+        notes: 'Same handler as /health-fair/volunteers/. POST registers. Hybrid local still used as fallback.',
+      },
+      {
+        method: 'POST',
+        path: '/api/volunteers/',
+        description: 'Register volunteer (alias)',
+        status: 'live',
+        body: {
+          full_name: 'string (required)',
+          email: 'string (required)',
+          phone: 'string (required)',
+          organization: 'string',
+          role: 'string',
+          availability: 'string',
+          skills: 'string[]',
+          notes: 'string',
+        },
       },
       {
         method: 'GET',
@@ -209,9 +225,24 @@ const endpointGroups: { title: string; endpoints: EndpointDoc[] }[] = [
       {
         method: 'GET',
         path: '/health-fair/volunteers/',
-        description: 'Volunteers',
-        status: 'missing',
-        notes: '404 on GoDaddy — local hybrid only.',
+        description: 'List Health Fair volunteers',
+        status: 'live',
+      },
+      {
+        method: 'POST',
+        path: '/health-fair/volunteers/',
+        description: 'Register Health Fair volunteer',
+        status: 'live',
+        body: {
+          full_name: 'string (required)',
+          email: 'string (required)',
+          phone: 'string (required)',
+          organization: 'string',
+          role: 'string',
+          availability: 'string',
+          skills: 'string[]',
+          notes: 'string',
+        },
       },
     ],
   },
@@ -475,7 +506,7 @@ const ApiDocumentation: React.FC = () => {
                     <strong>ICD-10 tab</strong> → NIH Clinical Tables + local aliases (HTN → I10)
                   </li>
                   <li>
-                    <strong>Volunteers</strong> → local hybrid (GoDaddy volunteers route is 404)
+                    <strong>Volunteers</strong> → <code>/health-fair/volunteers/</code> (live) + local hybrid fallback
                   </li>
                   <li>
                     <strong>Nutrition / AI</strong> → <code>/api/nutrition/health/</code> and <code>/api/ai/health/</code> (live)
