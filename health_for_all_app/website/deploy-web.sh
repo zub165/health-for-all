@@ -8,8 +8,10 @@ VERSION="$(grep '^version:' "$ROOT/pubspec.yaml" | awk '{print $2}' | cut -d+ -f
 WORK="${TMPDIR:-/tmp}/hfa-gh-pages-$$"
 
 cd "$ROOT"
+chmod +x website/generate-from-env.sh
+./website/generate-from-env.sh
 flutter pub get
-flutter build web --release --base-href="/${PAGES_SLUG}/app/" \
+flutter build web --release --base-href "/${PAGES_SLUG}/app/" \
   --dart-define=API_BASE_URL=https://api.mywaitime.com/api/ \
   --dart-define=LAB_BASE_URL=https://api.mywaitime.com/lab/ \
   --dart-define=HEALTH_FAIR_BASE_URL=https://api.mywaitime.com/health-fair/
