@@ -77,10 +77,18 @@ const ApiStatusDashboard: React.FC = () => {
     },
     {
       id: 'lab',
-      name: 'Lab Management',
+      name: 'Lab catalog (/lab/)',
       status: 'checking',
-      description: 'Test catalog, orders, results at /lab/',
+      description: 'GoDaddy :3015 lab_management — tests + Imaging (radiology)',
       endpoint: `${base}/lab/tests/?page_size=1`,
+      icon: <Science />,
+    },
+    {
+      id: 'lab-results',
+      name: 'Lab/Radiology on patient',
+      status: 'checking',
+      description: 'GoDaddy :3015 /api/lab-results/ — attach to HFA patient profile',
+      endpoint: `${base}/api/lab-results/?page_size=1`,
       icon: <Science />,
     },
     {
@@ -149,6 +157,7 @@ const ApiStatusDashboard: React.FC = () => {
         { id: 'main', url: `${base}/api/health/`, required: true },
         { id: 'health-fair', url: `${base}/health-fair/dashboard/`, required: true },
         { id: 'lab', url: `${base}/lab/tests/?page_size=1`, required: true },
+        { id: 'lab-results', url: `${base}/api/lab-results/?page_size=1`, required: true },
         {
           id: 'icd10',
           url: 'https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?sf=code,name&terms=I10',

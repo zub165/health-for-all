@@ -1,14 +1,16 @@
 /**
- * Lab API Service
- * Integrates with the Lab Management backend (separate Django app)
- * Uses /lab/ endpoint (lab_management app, not /api/lab/)
+ * Lab API — GoDaddy Saeed Lab Management
+ * HTTPS: https://api.mywaitime.com/lab/ → nginx → django_hospitalfinder :3015
  *
- * Always use HTTPS nginx (443). Browser calls to :3015 fail with "Failed to fetch"
- * (CORS / mixed / blocked port) — same pattern as patients/vitals.
+ * Radiology = Imaging category (XRAY / CT / MRI / US) on this same API.
+ * Patient profile attach uses /api/lab-results/ via patientLabService (hybrid).
  */
-const LAB_BASE_URL = 'https://api.mywaitime.com/lab';
+import { GODADDY_BACKENDS } from '../config/godaddyBackends';
 
-interface LabTest {
+const LAB_BASE_URL = GODADDY_BACKENDS.labManagement.httpsBase;
+const TOKEN_KEY = 'hfa_lab_jwt_access_v1';
+
+export interface LabTest {
   id: string;
   test_code: string;
   test_name: string;
@@ -25,249 +27,160 @@ interface LabTest {
   updated_at: string;
 }
 
-interface LabTestCategory {
+export interface LabTestCategory {
   id: number;
   name: string;
   description: string;
+  is_active?: boolean;
 }
 
-interface LabTestOrder {
-  id?: string;
-  patient_id: string;
-  test_id: string;
-  test_name: string;
-  test_code: string;
-  ordered_by: string;
-  order_date: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-  priority: 'routine' | 'urgent' | 'stat';
-  notes?: string;
-}
-
-interface LabTestResult {
-  id?: string;
-  order_id: string;
-  test_id: string;
-  result_value: string;
-  result_unit: string;
-  reference_range: string;
-  status: 'normal' | 'abnormal' | 'critical';
-  notes?: string;
-  completed_by: string;
-  completed_at: string;
-}
-
-interface ApiResponse<T> {
+export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
   message?: string;
 }
 
-class LabApiService {
-  private baseURL: string;
-  private headers: HeadersInit;
+function unwrapList<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && typeof payload === 'object') {
+    const obj = payload as Record<string, unknown>;
+    if (Array.isArray(obj.results)) return obj.results as T[];
+    if (Array.isArray(obj.data)) return obj.data as T[];
+  }
+  return [];
+}
 
-  constructor() {
-    this.baseURL = LAB_BASE_URL;
-    this.headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Origin': 'https://zub165.github.io'
-    };
+class LabApiService {
+  private baseURL = LAB_BASE_URL;
+
+  getStoredToken(): string | null {
+    try {
+      return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
   }
 
-  // Get all available lab tests
+  setStoredToken(token: string | null, persist = false): void {
+    try {
+      if (!token) {
+        sessionStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(TOKEN_KEY);
+        return;
+      }
+      sessionStorage.setItem(TOKEN_KEY, token);
+      if (persist) localStorage.setItem(TOKEN_KEY, token);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private headers(auth = false): HeadersInit {
+    const h: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    if (auth) {
+      const token = this.getStoredToken();
+      if (token) h.Authorization = `Bearer ${token}`;
+    }
+    return h;
+  }
+
+  /** JWT login against GoDaddy lab_management */
+  async login(username: string, password: string): Promise<ApiResponse<{ access: string }>> {
+    try {
+      const response = await fetch(GODADDY_BACKENDS.labManagement.authToken, {
+        method: 'POST',
+        headers: this.headers(false),
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.detail || data?.message || `HTTP ${response.status}`);
+      }
+      const access = data.access || data?.data?.access_token;
+      if (!access) throw new Error('No access token in lab login response');
+      this.setStoredToken(access, true);
+      return { success: true, data: { access }, message: 'Lab API login OK' };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Lab login failed',
+      };
+    }
+  }
+
   async getTests(): Promise<ApiResponse<LabTest[]>> {
     try {
-      console.log('Lab API: Fetching tests...');
-      const response = await fetch(`${this.baseURL}/tests/`, {
+      const response = await fetch(`${this.baseURL}/tests/?page_size=500`, {
         method: 'GET',
-        headers: this.headers
+        headers: this.headers(false),
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       const data = await response.json();
-      console.log('Lab API: Tests fetched successfully');
-      
-      return {
-        success: true,
-        data: data,
-        message: 'Lab tests retrieved successfully'
-      };
+      return { success: true, data: unwrapList<LabTest>(data), message: 'Lab tests loaded' };
     } catch (error) {
-      console.error('Lab API: Error fetching tests:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
 
-  // Get test categories
   async getTestCategories(): Promise<ApiResponse<LabTestCategory[]>> {
     try {
-      console.log('Lab API: Fetching test categories...');
       const response = await fetch(`${this.baseURL}/test-categories/`, {
         method: 'GET',
-        headers: this.headers
+        headers: this.headers(false),
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       const data = await response.json();
-      console.log('Lab API: Test categories fetched successfully');
-      
       return {
         success: true,
-        data: data,
-        message: 'Test categories retrieved successfully'
+        data: unwrapList<LabTestCategory>(data),
+        message: 'Categories loaded',
       };
     } catch (error) {
-      console.error('Lab API: Error fetching test categories:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
 
-  // Create a new test order
-  async createTestOrder(orderData: Omit<LabTestOrder, 'id'>): Promise<ApiResponse<LabTestOrder>> {
+  /**
+   * Create order on Saeed Lab API (requires JWT + lab patient_id PAT######).
+   * Health For ALL primary path is patientLabService → /api/lab-results/.
+   */
+  async createTestOrder(payload: {
+    patient: string;
+    doctor?: string | number;
+    priority?: string;
+    clinical_notes?: string;
+    test_items: Array<{ test_id?: string; test_code?: string }>;
+  }): Promise<ApiResponse<unknown>> {
     try {
-      console.log('Lab API: Creating test order...', orderData);
       const response = await fetch(`${this.baseURL}/test-orders/`, {
         method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify(orderData)
+        headers: this.headers(true),
+        body: JSON.stringify(payload),
       });
-
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(
+          data?.message || data?.detail || JSON.stringify(data?.errors || data) || `HTTP ${response.status}`
+        );
       }
-
-      const data = await response.json();
-      console.log('Lab API: Test order created successfully');
-      
-      return {
-        success: true,
-        data: data,
-        message: 'Test order created successfully'
-      };
+      return { success: true, data, message: 'Lab order created on /lab/' };
     } catch (error) {
-      console.error('Lab API: Error creating test order:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  // Get test orders for a patient
-  async getPatientTestOrders(patientId: string): Promise<ApiResponse<LabTestOrder[]>> {
-    try {
-      console.log('Lab API: Fetching test orders for patient:', patientId);
-      const response = await fetch(`${this.baseURL}/test-orders/?patient_id=${patientId}`, {
-        method: 'GET',
-        headers: this.headers
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('Lab API: Patient test orders fetched successfully');
-      
-      return {
-        success: true,
-        data: data,
-        message: 'Patient test orders retrieved successfully'
-      };
-    } catch (error) {
-      console.error('Lab API: Error fetching patient test orders:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  // Submit test results
-  async submitTestResult(resultData: Omit<LabTestResult, 'id'>): Promise<ApiResponse<LabTestResult>> {
-    try {
-      console.log('Lab API: Submitting test result...', resultData);
-      const response = await fetch(`${this.baseURL}/test-results/`, {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify(resultData)
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('Lab API: Test result submitted successfully');
-      
-      return {
-        success: true,
-        data: data,
-        message: 'Test result submitted successfully'
-      };
-    } catch (error) {
-      console.error('Lab API: Error submitting test result:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  // Get test results for an order
-  async getTestResults(orderId: string): Promise<ApiResponse<LabTestResult[]>> {
-    try {
-      console.log('Lab API: Fetching test results for order:', orderId);
-      const response = await fetch(`${this.baseURL}/test-results/?order_id=${orderId}`, {
-        method: 'GET',
-        headers: this.headers
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('Lab API: Test results fetched successfully');
-      
-      return {
-        success: true,
-        data: data,
-        message: 'Test results retrieved successfully'
-      };
-    } catch (error) {
-      console.error('Lab API: Error fetching test results:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
 }
 
-// Export singleton instance
 export const labApi = new LabApiService();
-
-// Export types
-export type {
-  LabTest,
-  LabTestCategory,
-  LabTestOrder,
-  LabTestResult,
-  ApiResponse
-};

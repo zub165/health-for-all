@@ -247,30 +247,38 @@ const endpointGroups: { title: string; endpoints: EndpointDoc[] }[] = [
     ],
   },
   {
-    title: 'Lab (`/lab/`)',
+    title: 'Lab + Radiology (GoDaddy :3015)',
     endpoints: [
       {
         method: 'GET',
         path: '/lab/tests/',
-        description: 'Lab test catalog',
+        description: 'Catalog (includes Imaging XRAY/CT/MRI/US = radiology)',
         status: 'live',
+        notes: 'nginx → django_hospitalfinder lab_management. No separate /radiology/ URL.',
       },
       {
         method: 'GET',
         path: '/lab/test-categories/',
-        description: 'Lab categories',
+        description: 'Categories including Imaging',
+        status: 'live',
+      },
+      {
+        method: 'GET',
+        path: '/api/lab-results/?patient={id}',
+        description: 'Lab/radiology attached to HFA patient profile',
+        status: 'live',
+        notes: 'Primary write path from Health For ALL Lab tab (hybrid + POST).',
+      },
+      {
+        method: 'POST',
+        path: '/api/lab-results/',
+        description: 'Create lab or imaging finding on patient',
         status: 'live',
       },
       {
         method: 'GET',
         path: '/lab/test-orders/',
-        description: 'Lab orders',
-        status: 'live',
-      },
-      {
-        method: 'GET',
-        path: '/lab/test-results/',
-        description: 'Lab results',
+        description: 'Saeed Lab orders (JWT required)',
         status: 'live',
       },
     ],

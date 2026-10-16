@@ -566,6 +566,48 @@ class HybridDataService {
     }
   }
 
+  /// Attach lab/radiology finding to HFA patient on GoDaddy `/api/lab-results/`.
+  Future<Map<String, dynamic>> createPatientLabResult({
+    required String patientId,
+    required String testName,
+    required String testCode,
+    required String category,
+    required String resultValue,
+    required String units,
+    required String normalRange,
+  }) async {
+    await _ensurePrefs();
+    String? doctorId = _prefs!.getString('hfa_default_doctor_id_v1');
+    if (doctorId == null || doctorId.isEmpty) {
+      final doctors = await _apiClient.getJson('doctors/', queryParameters: {
+        'page_size': '5',
+      });
+      final data = doctors['data'];
+      if (data is List && data.isNotEmpty) {
+        doctorId = '${(data.first as Map)['id']}';
+        await _prefs!.setString('hfa_default_doctor_id_v1', doctorId);
+      }
+    }
+    if (doctorId == null || doctorId.isEmpty) {
+      throw ApiException(message: 'No doctor available for lab-results POST');
+    }
+
+    return _apiClient.postJson('lab-results/', body: {
+      'patient': patientId,
+      'doctor': doctorId,
+      'test_name': testName,
+      'test_category': category,
+      'result_value': resultValue,
+      'normal_range': normalRange,
+      'units': units,
+      'test_date': DateTime.now().toIso8601String().split('T').first,
+      'lab_name': 'Health For ALL (GoDaddy lab-results)',
+      'lab_reference': testCode,
+      'status': 'pending',
+      'notes': 'kind=${category == 'imaging' ? 'radiology' : 'lab'}',
+    });
+  }
+
   Future<DashboardStats> fetchDashboardStats() async {
     await _ensurePrefs();
     var apiHealthy = false;

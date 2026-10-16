@@ -59,6 +59,8 @@ import UnifiedSOAPNote from './UnifiedSOAPNote';
 import { PatientData } from '../services/hybridPatientService';
 import { useAppData, notifyAppDataChanged } from '../context/AppDataContext';
 import ExportActions from './ExportActions';
+import { patientLabService, PatientLabOrder } from '../services/patientLabService';
+import { GODADDY_BACKENDS } from '../config/godaddyBackends';
 
 interface DoctorDashboardProps {
   doctorName: string;
@@ -111,6 +113,8 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [patientLabOrders, setPatientLabOrders] = useState<PatientLabOrder[]>([]);
+  const [labOrdersLoading, setLabOrdersLoading] = useState(false);
   const [showVitalsForm, setShowVitalsForm] = useState(false);
   const [showRecommendationForm, setShowRecommendationForm] = useState(false);
   const [patientVitals, setPatientVitals] = useState<Vitals[]>([]);
@@ -249,9 +253,31 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
     }
   };
 
+  const loadPatientLabOrders = async (patient: Patient) => {
+    if (!patient.id) {
+      setPatientLabOrders([]);
+      return;
+    }
+    setLabOrdersLoading(true);
+    try {
+      const name =
+        patient.name ||
+        patient.full_name ||
+        `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+      const list = await patientLabService.getOrdersForPatient(patient.id, name);
+      setPatientLabOrders(list);
+    } catch (err) {
+      console.warn('Failed to load patient lab/radiology orders:', err);
+      setPatientLabOrders([]);
+    } finally {
+      setLabOrdersLoading(false);
+    }
+  };
+
   const handleViewPatient = (patient: Patient) => {
     setSelectedPatient(patient);
     fetchPatientVitals(patient.id!);
+    void loadPatientLabOrders(patient);
   };
 
   const handleRecordVitals = (patient: Patient) => {
@@ -1523,6 +1549,63 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
                       </Typography>
                     </Box>
                   </Box>
+                </AccordionDetails>
+              </Accordion>
+
+              {/* Lab & Radiology (GoDaddy /api/lab-results/ + hybrid local) */}
+              <Accordion defaultExpanded>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography variant="h6">
+                    🧪 Lab &amp; Radiology ({patientLabOrders.length})
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                    Catalog: {GODADDY_BACKENDS.labManagement.tests} · Profile:{' '}
+                    {GODADDY_BACKENDS.hospitalFinder.labResults}
+                  </Typography>
+                  {labOrdersLoading && <CircularProgress size={22} sx={{ mb: 1 }} />}
+                  {!labOrdersLoading && patientLabOrders.length === 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      No lab or radiology orders yet. Use the Lab tab → select this patient → Order.
+                    </Typography>
+                  )}
+                  {patientLabOrders.length > 0 && (
+                    <TableContainer component={Paper} variant="outlined">
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Test</TableCell>
+                            <TableCell>Kind</TableCell>
+                            <TableCell>Result</TableCell>
+                            <TableCell>Status</TableCell>
+                            <TableCell>Date</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {patientLabOrders.map((o) => (
+                            <TableRow key={o.id}>
+                              <TableCell>
+                                {o.testCode} — {o.testName}
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  size="small"
+                                  label={o.kind}
+                                  color={o.kind === 'radiology' ? 'secondary' : 'primary'}
+                                />
+                              </TableCell>
+                              <TableCell>{o.resultValue || '—'}</TableCell>
+                              <TableCell>{o.status}</TableCell>
+                              <TableCell>
+                                {new Date(o.orderDate).toLocaleDateString()}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
                 </AccordionDetails>
               </Accordion>
 

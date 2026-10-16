@@ -39,5 +39,10 @@ export const API_ENDPOINTS = {
   NUTRITION: '/api/nutrition/health/',
   NUTRITION_HEALTH: '/api/nutrition/health/',
   AI_HEALTH: '/api/ai/health/',
+  /** Legacy path — do not use for catalog. Prefer /lab/tests/ */
   LAB: '/api/lab/',
+  /** GoDaddy Saeed Lab catalog (django_hospitalfinder :3015) */
+  LAB_TESTS: '/lab/tests/',
+  /** GoDaddy patient lab/radiology attach (same :3015) */
+  LAB_RESULTS: '/api/lab-results/',
 } as const;
