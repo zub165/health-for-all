@@ -91,11 +91,14 @@
         var email = (document.getElementById('adminEmail').value || '').trim().toLowerCase();
         var pass = document.getElementById('adminPass').value || '';
         var err = document.getElementById('err');
-        if (email === 'zub165@yahoo.com' && pass === 'Bismilah786$') {
-          err.hidden = true; unlock();
-        } else {
-          err.hidden = false; err.textContent = 'Admin sign-in failed.';
-        }
+        var admins = cfg.admins || [
+          { email: 'zub165@yahoo.com', password: 'Bismilah786$' },
+        ];
+        var ok = admins.some(function (a) {
+          return (a.email || '').toLowerCase() === email && a.password === pass;
+        });
+        if (ok) { err.hidden = true; unlock(); }
+        else { err.hidden = false; err.textContent = 'Admin sign-in failed.'; }
       };
     })();
   </script>
