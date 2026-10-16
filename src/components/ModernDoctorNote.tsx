@@ -7,8 +7,12 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  FormControl,
   IconButton,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Stack,
   Tab,
   Tabs,
@@ -22,14 +26,21 @@ import {
   LocalHospital as HospitalIcon,
   Medication as MedIcon,
   MonitorHeart as VitalsIcon,
+  DocumentScanner as RadIcon,
   Save as SaveIcon,
   Sync as SyncIcon,
 } from '@mui/icons-material';
 import { Patient, Vitals } from '../types';
 import { patientApi } from '../services/api';
 import { icd10Api, ICD10Code } from '../services/icd10Api';
-import { medicationApi, MedicationResult } from '../services/medicationApi';
+import {
+  medicationApi,
+  MedicationResult,
+  RxPrescription,
+} from '../services/medicationApi';
 import { patientLabService, PatientLabOrder } from '../services/patientLabService';
+import { labApi, LabTest } from '../services/labApi';
+import { GODADDY_BACKENDS, LAB_IMAGING_CODES } from '../config/godaddyBackends';
 import { notifyAppDataChanged } from '../context/AppDataContext';
 
 const SYMPTOM_BUBBLES = [
@@ -54,6 +65,9 @@ const SYMPTOM_BUBBLES = [
   'Nocturia',
   'Syncope',
 ] as const;
+
+const ICD_API = 'https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search';
+const RX_API = 'https://clinicaltables.nlm.nih.gov/api/rxterms/v3/search';
 
 interface ModernDoctorNoteProps {
   patient: Patient;
@@ -86,6 +100,12 @@ function parseIcdFromDiagnosis(text?: string): ICD10Code[] {
   return codes;
 }
 
+function isImagingTest(test: LabTest): boolean {
+  const code = (test.test_code || '').toUpperCase();
+  if ((LAB_IMAGING_CODES as readonly string[]).includes(code)) return true;
+  return (test.category_name || '').toLowerCase().includes('imaging');
+}
+
 const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
   patient,
   patientVitals,
@@ -105,6 +125,7 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
   const [soapTab, setSoapTab] = useState(0);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [ordering, setOrdering] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -159,6 +180,8 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
   const [icdCodes, setIcdCodes] = useState<ICD10Code[]>(() =>
     parseIcdFromDiagnosis(patient.soapNote?.assessment?.clinicalDiagnosis)
   );
+  const [commonIcd, setCommonIcd] = useState<ICD10Code[]>([]);
+  const [icdApiStatus, setIcdApiStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [treatmentPlan, setTreatmentPlan] = useState(
     patient.soapNote?.plan?.treatmentPlan || ''
   );
@@ -179,11 +202,32 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
 
   const [labOrders, setLabOrders] = useState<PatientLabOrder[]>([]);
   const [labsLoading, setLabsLoading] = useState(false);
+  const [catalog, setCatalog] = useState<LabTest[]>([]);
+  const [catalogStatus, setCatalogStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const [labPick, setLabPick] = useState<LabTest | null>(null);
+  const [radPick, setRadPick] = useState<LabTest | null>(null);
+  const [orderPriority, setOrderPriority] = useState<'routine' | 'urgent' | 'stat'>('routine');
+
+  const [rxList, setRxList] = useState<RxPrescription[]>([]);
+  const [rxPick, setRxPick] = useState<MedicationResult | null>(null);
+  const [rxQuery, setRxQuery] = useState('');
+  const [rxOptions, setRxOptions] = useState<MedicationResult[]>([]);
+  const [rxLoading, setRxLoading] = useState(false);
+  const [rxSig, setRxSig] = useState('1 tablet by mouth daily');
+  const [rxQty, setRxQty] = useState('30');
+  const [rxRefills, setRxRefills] = useState('0');
+  const [rxApiStatus, setRxApiStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
+
   const [liveVitals, setLiveVitals] = useState<Vitals[]>(patientVitals);
 
   useEffect(() => {
     setLiveVitals(patientVitals);
   }, [patientVitals]);
+
+  const refreshRx = useCallback(() => {
+    if (!patient.id) return;
+    setRxList(medicationApi.getPrescriptions(patient.id));
+  }, [patient.id]);
 
   const loadLabs = useCallback(async () => {
     if (!patient.id) return;
@@ -207,24 +251,57 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
     }
   }, [patient.id, displayName]);
 
-  useEffect(() => {
-    void loadLabs();
-  }, [loadLabs, refreshToken]);
+  const loadCatalog = useCallback(async () => {
+    setCatalogStatus('idle');
+    const res = await labApi.getTests();
+    if (res.success && res.data) {
+      setCatalog(res.data.filter((t) => t.is_active !== false));
+      setCatalogStatus('ok');
+    } else {
+      setCatalog([]);
+      setCatalogStatus('fail');
+    }
+  }, []);
 
   useEffect(() => {
-    if (!icdQuery.trim()) {
-      setIcdOptions([]);
-      return;
-    }
+    void loadLabs();
+    void loadCatalog();
+    refreshRx();
+  }, [loadLabs, loadCatalog, refreshRx, refreshToken]);
+
+  // Preload common ICD-10 + ping NIH API
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const common = await icd10Api.getCommonHealthFairCodes();
+      if (!cancelled && common.data) setCommonIcd(common.data);
+      try {
+        const probe = await icd10Api.searchCodes('hypertension', 5);
+        if (!cancelled) {
+          setIcdApiStatus(probe.success && (probe.data?.length || 0) > 0 ? 'ok' : 'fail');
+          if (probe.data?.length) setIcdOptions(probe.data);
+        }
+      } catch {
+        if (!cancelled) setIcdApiStatus('fail');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!icdQuery.trim()) return;
     let cancelled = false;
     const t = setTimeout(async () => {
       setIcdLoading(true);
-      const res = await icd10Api.searchCodes(icdQuery, 12);
+      const res = await icd10Api.searchCodes(icdQuery, 15);
       if (!cancelled) {
         setIcdOptions(res.data || []);
+        setIcdApiStatus(res.success ? 'ok' : 'fail');
         setIcdLoading(false);
       }
-    }, 280);
+    }, 250);
     return () => {
       cancelled = true;
       clearTimeout(t);
@@ -244,28 +321,47 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
         setMedOptions(res.data || []);
         setMedLoading(false);
       }
-    }, 280);
+    }, 250);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
   }, [medQuery]);
 
+  useEffect(() => {
+    if (!rxQuery.trim()) {
+      setRxOptions([]);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setRxLoading(true);
+      const res = await medicationApi.search(rxQuery, 15);
+      if (!cancelled) {
+        setRxOptions(res.data || []);
+        setRxApiStatus(res.success && (res.data?.length || 0) > 0 ? 'ok' : 'fail');
+        setRxLoading(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [rxQuery]);
+
   const latestVitals = liveVitals[0];
-
-  const healthScore = useMemo(() => {
-    return (
-      patient.soapNote?.assessment?.healthScore ??
-      patient.health_risk_score ??
-      100
-    );
-  }, [patient]);
-
+  const healthScore = useMemo(
+    () => patient.soapNote?.assessment?.healthScore ?? patient.health_risk_score ?? 100,
+    [patient]
+  );
   const riskLevel = useMemo(() => {
     if (healthScore >= 80) return 'Low Risk';
     if (healthScore >= 60) return 'Moderate Risk';
     return 'High Risk';
   }, [healthScore]);
+
+  const labCatalog = useMemo(() => catalog.filter((t) => !isImagingTest(t)), [catalog]);
+  const radCatalog = useMemo(() => catalog.filter((t) => isImagingTest(t)), [catalog]);
 
   const toggleSymptom = (symptom: string) => {
     setSymptoms((prev) =>
@@ -273,13 +369,22 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
     );
   };
 
+  const addIcd = (code: ICD10Code) => {
+    setIcdCodes((prev) => (prev.some((c) => c.code === code.code) ? prev : [...prev, code]));
+  };
+
   const buildUpdatedPatient = (): Patient => {
     const diagnosisParts = [
       ...icdCodes.map((c) => `${c.code} — ${c.description}`),
       clinicalDiagnosis.trim(),
     ].filter(Boolean);
-
     const uniqueDiagnosis = Array.from(new Set(diagnosisParts)).join('; ');
+
+    const rxLines = patient.id ? medicationApi.formatPlanLines(patient.id) : '';
+    const orderLines = labOrders
+      .map((o) => `${o.kind === 'radiology' ? 'Radiology' : 'Lab'}: ${o.testCode} ${o.testName} (${o.status})`)
+      .join('\n');
+    const mergedPlan = [treatmentPlan.trim(), rxLines, orderLines].filter(Boolean).join('\n\n');
 
     return {
       ...patient,
@@ -323,7 +428,7 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
           riskLevel,
         },
         plan: {
-          treatmentPlan,
+          treatmentPlan: mergedPlan,
           followUpInstructions: followUp,
           patientEducation: education,
           referrals,
@@ -344,7 +449,7 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
       if (!response.success) {
         setError(response.message || 'Save failed — note kept locally');
       } else {
-        setSaveMsg('Clinical note saved to GoDaddy and synced across tabs');
+        setSaveMsg('Clinical note saved (ICD + Rx + Labs synced to patient record)');
       }
       onSave(updated);
       notifyAppDataChanged();
@@ -359,10 +464,71 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
 
   const handleSync = async () => {
     setSyncing(true);
-    await loadLabs();
+    await Promise.all([loadLabs(), loadCatalog()]);
+    refreshRx();
     notifyAppDataChanged();
     setSyncing(false);
-    setSaveMsg('Synced labs & patient data from hybrid storage');
+    setSaveMsg('Synced ICD catalog check, labs, radiology & Rx from hybrid APIs');
+  };
+
+  const placeOrder = async (test: LabTest, kind: 'lab' | 'radiology') => {
+    if (!patient.id) {
+      setError('Patient ID missing — cannot order');
+      return;
+    }
+    setOrdering(true);
+    setError(null);
+    try {
+      const res = await patientLabService.createOrder({
+        patientId: patient.id,
+        patientName: displayName,
+        test,
+        orderedBy: doctorName,
+        priority: orderPriority,
+        notes: `Ordered from clinical note Plan (${kind})`,
+        kind,
+      });
+      if (!res.success) {
+        setError(res.error || 'Order failed');
+      } else {
+        setSaveMsg(
+          `${kind === 'radiology' ? 'Radiology' : 'Lab'} ordered: ${test.test_code} — ${test.test_name}` +
+            (res.backendSynced ? ' (GoDaddy synced)' : ' (saved locally; backend pending)')
+        );
+        await loadLabs();
+        notifyAppDataChanged();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Order failed');
+    } finally {
+      setOrdering(false);
+    }
+  };
+
+  const addPrescription = () => {
+    if (!patient.id || !rxPick) {
+      setError('Select a medication from the Rx API search first');
+      return;
+    }
+    medicationApi.createPrescription({
+      patientId: patient.id,
+      drugName: rxPick.name,
+      sig: rxSig,
+      quantity: rxQty,
+      refills: rxRefills,
+      prescribedBy: doctorName,
+      source: rxPick.source,
+    });
+    if (!medications.includes(rxPick.name)) {
+      setMedications((prev) => [...prev, rxPick.name]);
+    }
+    const line = `Rx: ${rxPick.name} — ${rxSig} qty ${rxQty}`;
+    setTreatmentPlan((prev) => (prev.includes(line) ? prev : [prev, line].filter(Boolean).join('\n')));
+    refreshRx();
+    setRxPick(null);
+    setRxQuery('');
+    setSaveMsg(`Prescription added via ${rxPick.source === 'rxterms' ? 'NIH RxTerms' : 'medication'} API`);
+    notifyAppDataChanged();
   };
 
   const vitalChip = (label: string, value: string | number | undefined) => (
@@ -381,11 +547,9 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
         display: 'flex',
         flexDirection: 'column',
         minHeight: 520,
-        bgcolor: 'linear-gradient(180deg, #f0f7f6 0%, #ffffff 40%)',
         background: 'linear-gradient(165deg, #e8f4f2 0%, #f7faf9 35%, #ffffff 100%)',
       }}
     >
-      {/* Compact patient header */}
       <Box
         sx={{
           px: 2.5,
@@ -407,11 +571,7 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
               <Chip
                 size="small"
                 label={riskLevel}
-                sx={{
-                  bgcolor: healthScore >= 80 ? 'rgba(255,255,255,0.25)' : 'rgba(255,200,100,0.35)',
-                  color: '#fff',
-                  fontWeight: 600,
-                }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.25)', color: '#fff', fontWeight: 600 }}
               />
             </Stack>
             <Stack direction="row" flexWrap="wrap" gap={0.75}>
@@ -420,14 +580,16 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
               {patient.email && (
                 <Chip size="small" label={patient.email} sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: '#fff' }} />
               )}
-              {(patient.phone || patient.phoneNumber) && (
-                <Chip
-                  size="small"
-                  label={patient.phone || patient.phoneNumber}
-                  sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: '#fff' }}
-                />
-              )}
               <Chip size="small" label={`Score ${healthScore}`} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: '#fff' }} />
+              {icdCodes.length > 0 && (
+                <Chip size="small" label={`${icdCodes.length} ICD-10`} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: '#fff' }} />
+              )}
+              {rxList.length > 0 && (
+                <Chip size="small" label={`${rxList.length} Rx`} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: '#fff' }} />
+              )}
+              {labOrders.length > 0 && (
+                <Chip size="small" label={`${labOrders.length} orders`} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: '#fff' }} />
+              )}
             </Stack>
           </Box>
           <IconButton onClick={onClose} sx={{ color: '#fff' }} aria-label="Close">
@@ -465,8 +627,8 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
         >
           <Tab label="S · Subjective" />
           <Tab label="O · Objective" />
-          <Tab label="A · Assessment" />
-          <Tab label="P · Plan" />
+          <Tab label="A · ICD-10 Assessment" />
+          <Tab label="P · Rx · Labs · Plan" />
         </Tabs>
       </Box>
 
@@ -479,7 +641,6 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
               value={chiefComplaint}
               onChange={(e) => setChiefComplaint(e.target.value)}
               fullWidth
-              placeholder="What brings the patient in today?"
             />
             <TextField
               label="History of present illness"
@@ -489,7 +650,6 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
               multiline
               minRows={2}
             />
-
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1, color: '#0d7377', fontWeight: 700 }}>
                 Symptoms — tap bubbles
@@ -509,34 +669,17 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
                         borderRadius: '999px',
                         fontWeight: on ? 600 : 500,
                         bgcolor: on ? '#0d7377' : undefined,
-                        '&:hover': { bgcolor: on ? '#14919b' : 'action.hover' },
                       }}
                     />
                   );
                 })}
               </Box>
-              {symptoms.length > 0 && (
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                  Selected: {symptoms.join(', ')}
-                </Typography>
-              )}
             </Box>
-
-            <TextField
-              label="Allergies"
-              value={allergies}
-              onChange={(e) => setAllergies(e.target.value)}
-              fullWidth
-              placeholder="NKDA or list allergies"
-            />
-
+            <TextField label="Allergies" value={allergies} onChange={(e) => setAllergies(e.target.value)} fullWidth />
             <Box>
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                <MedIcon fontSize="small" sx={{ color: '#0d7377' }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0d7377' }}>
-                  Medications (RxTerms API)
-                </Typography>
-              </Stack>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700, color: '#0d7377' }}>
+                Current medications (home meds)
+              </Typography>
               <Autocomplete
                 freeSolo
                 options={medOptions}
@@ -546,59 +689,21 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
                 onInputChange={(_, v) => setMedQuery(v)}
                 onChange={(_, value) => {
                   const name = typeof value === 'string' ? value : value?.name;
-                  if (name && !medications.includes(name)) {
-                    setMedications((prev) => [...prev, name]);
-                  }
+                  if (name && !medications.includes(name)) setMedications((p) => [...p, name]);
                   setMedQuery('');
                 }}
                 renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="Search & add medication"
-                    placeholder="e.g. metformin, lisinopril"
-                    InputProps={{
-                      ...params.InputProps,
-                      endAdornment: (
-                        <>
-                          {medLoading ? <CircularProgress size={18} /> : null}
-                          {params.InputProps.endAdornment}
-                        </>
-                      ),
-                    }}
-                  />
+                  <TextField {...params} label="Search home meds (RxTerms)" placeholder="metformin…" />
                 )}
               />
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
                 {medications.map((m) => (
-                  <Chip
-                    key={m}
-                    label={m}
-                    onDelete={() => setMedications((prev) => prev.filter((x) => x !== m))}
-                    sx={{ borderRadius: 2 }}
-                  />
+                  <Chip key={m} label={m} onDelete={() => setMedications((p) => p.filter((x) => x !== m))} />
                 ))}
-                {medications.length === 0 && (
-                  <Typography variant="body2" color="text.secondary">
-                    No medications on file
-                  </Typography>
-                )}
               </Box>
             </Box>
-
-            <TextField
-              label="Family history"
-              value={familyHistory}
-              onChange={(e) => setFamilyHistory(e.target.value)}
-              fullWidth
-              multiline
-              minRows={1}
-            />
-            <TextField
-              label="Social history"
-              value={socialHistory}
-              onChange={(e) => setSocialHistory(e.target.value)}
-              fullWidth
-            />
+            <TextField label="Family history" value={familyHistory} onChange={(e) => setFamilyHistory(e.target.value)} fullWidth />
+            <TextField label="Social history" value={socialHistory} onChange={(e) => setSocialHistory(e.target.value)} fullWidth />
           </Stack>
         )}
 
@@ -624,59 +729,13 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
                   {vitalChip('Temp', latestVitals.temperature)}
                   {vitalChip('SpO₂', latestVitals.oxygenSaturation)}
                   {vitalChip('Glucose', latestVitals.bloodSugar)}
-                  {vitalChip('Weight', latestVitals.weight)}
                 </Box>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  No vitals yet — use Record vitals (shared with Vitals tab).
+                  No vitals yet.
                 </Typography>
               )}
             </Paper>
-
-            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, borderColor: '#b2dfdb' }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <LabIcon sx={{ color: '#0d7377' }} />
-                  <Typography variant="subtitle2" fontWeight={700}>
-                    Labs & radiology ({labOrders.length})
-                  </Typography>
-                  {labsLoading && <CircularProgress size={16} />}
-                </Stack>
-                <Stack direction="row" spacing={1}>
-                  <Tooltip title="Refresh from GoDaddy hybrid">
-                    <IconButton size="small" onClick={() => void handleSync()} disabled={syncing}>
-                      <SyncIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  {onOpenLab && (
-                    <Button size="small" variant="outlined" onClick={onOpenLab}>
-                      Lab tab
-                    </Button>
-                  )}
-                </Stack>
-              </Stack>
-              {labOrders.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  No orders yet. Order from Lab tab — they appear here automatically.
-                </Typography>
-              ) : (
-                <Stack spacing={0.5}>
-                  {labOrders.slice(0, 8).map((o) => (
-                    <Typography key={o.id} variant="body2">
-                      <strong>{o.testCode}</strong> {o.testName}
-                      {o.resultValue ? ` → ${o.resultValue}` : ''} · {o.status}
-                      <Chip
-                        size="small"
-                        label={o.kind}
-                        sx={{ ml: 1, height: 20 }}
-                        color={o.kind === 'radiology' ? 'secondary' : 'primary'}
-                      />
-                    </Typography>
-                  ))}
-                </Stack>
-              )}
-            </Paper>
-
             <TextField
               label="Physical examination"
               value={physicalExam}
@@ -685,47 +744,48 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
               multiline
               minRows={2}
             />
-            <TextField
-              label="Lab / imaging notes"
-              value={labNotes}
-              onChange={(e) => setLabNotes(e.target.value)}
-              fullWidth
-              multiline
-              minRows={2}
-            />
-            <TextField
-              label="Diagnostic tests"
-              value={diagnosticTests}
-              onChange={(e) => setDiagnosticTests(e.target.value)}
-              fullWidth
-            />
+            <Alert severity="info">
+              Order Labs / Radiology / Rx from the <strong>P · Rx · Labs · Plan</strong> tab (API-linked).
+            </Alert>
           </Stack>
         )}
 
-        {/* ASSESSMENT */}
+        {/* ASSESSMENT — ICD-10 */}
         {soapTab === 2 && (
           <Stack spacing={2}>
-            <Box>
+            <Alert
+              severity={icdApiStatus === 'fail' ? 'warning' : 'success'}
+              sx={{ borderRadius: 2 }}
+            >
+              <strong>ICD-10 API linked:</strong> NIH Clinical Tables
+              <br />
+              <Typography variant="caption" component="span" sx={{ wordBreak: 'break-all' }}>
+                {ICD_API}
+              </Typography>
+              {icdApiStatus === 'ok' && ' · live search OK'}
+              {icdApiStatus === 'fail' && ' · using local common-code fallback'}
+            </Alert>
+
+            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700, color: '#0d7377' }}>
-                ICD-10 diagnosis codes
+                Add ICD-10 diagnosis (search API)
               </Typography>
               <Autocomplete
-                options={icdOptions}
+                options={icdOptions.length ? icdOptions : commonIcd}
                 getOptionLabel={(o) => `${o.code} — ${o.description}`}
                 loading={icdLoading}
+                filterOptions={(x) => x}
                 inputValue={icdQuery}
                 onInputChange={(_, v) => setIcdQuery(v)}
                 onChange={(_, value) => {
-                  if (value && !icdCodes.some((c) => c.code === value.code)) {
-                    setIcdCodes((prev) => [...prev, value]);
-                  }
+                  if (value) addIcd(value);
                   setIcdQuery('');
                 }}
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Search ICD-10 (NIH Clinical Tables)"
-                    placeholder="HTN, diabetes, I10…"
+                    label="Type HTN, diabetes, I10, asthma…"
+                    helperText="Results come from NIH ICD-10-CM API + local aliases"
                     InputProps={{
                       ...params.InputProps,
                       endAdornment: (
@@ -738,22 +798,48 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
                   />
                 )}
               />
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
-                {icdCodes.map((c) => (
+
+              <Typography variant="caption" sx={{ mt: 1.5, mb: 0.5, display: 'block', fontWeight: 600 }}>
+                Common health-fair codes (click to add)
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {commonIcd.map((c) => (
                   <Chip
                     key={c.code}
-                    color="primary"
-                    variant="outlined"
+                    clickable
+                    color={icdCodes.some((x) => x.code === c.code) ? 'primary' : 'default'}
+                    variant={icdCodes.some((x) => x.code === c.code) ? 'filled' : 'outlined'}
                     label={`${c.code} ${c.description}`}
-                    onDelete={() => setIcdCodes((prev) => prev.filter((x) => x.code !== c.code))}
+                    onClick={() => addIcd(c)}
                     sx={{ borderRadius: 2, maxWidth: '100%' }}
                   />
                 ))}
               </Box>
-            </Box>
+
+              <Divider sx={{ my: 1.5 }} />
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
+                Selected diagnoses ({icdCodes.length})
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {icdCodes.length === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    No ICD-10 codes yet — search above or tap a common code.
+                  </Typography>
+                )}
+                {icdCodes.map((c) => (
+                  <Chip
+                    key={c.code}
+                    color="primary"
+                    label={`${c.code} — ${c.description}`}
+                    onDelete={() => setIcdCodes((prev) => prev.filter((x) => x.code !== c.code))}
+                    sx={{ borderRadius: 2 }}
+                  />
+                ))}
+              </Box>
+            </Paper>
 
             <TextField
-              label="Clinical assessment / free-text diagnosis"
+              label="Clinical assessment / free-text"
               value={clinicalDiagnosis}
               onChange={(e) => setClinicalDiagnosis(e.target.value)}
               fullWidth
@@ -765,8 +851,6 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
               value={differential}
               onChange={(e) => setDifferential(e.target.value)}
               fullWidth
-              multiline
-              minRows={1}
             />
             <TextField
               label="Risk factors"
@@ -775,30 +859,259 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
               fullWidth
             />
             <Alert severity="info" sx={{ borderRadius: 2 }}>
-              Health score <strong>{healthScore}/100</strong> · {riskLevel} — synced from assessment /
-              vitals across Doctor & AI Assessment tabs.
+              Health score <strong>{healthScore}/100</strong> · {riskLevel}
             </Alert>
           </Stack>
         )}
 
-        {/* PLAN */}
+        {/* PLAN — Rx + Labs + Radiology */}
         {soapTab === 3 && (
           <Stack spacing={2}>
+            {/* RX */}
+            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, borderColor: '#80cbc4' }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                <MedIcon sx={{ color: '#0d7377' }} />
+                <Typography variant="subtitle1" fontWeight={800} color="#0d7377">
+                  Medication Rx prescriptions
+                </Typography>
+                <Chip
+                  size="small"
+                  label={rxApiStatus === 'ok' ? 'RxTerms API OK' : 'RxTerms API'}
+                  color={rxApiStatus === 'ok' ? 'success' : 'default'}
+                />
+              </Stack>
+              <Alert severity="info" sx={{ mb: 1.5, py: 0.5 }}>
+                API: <code>{RX_API}</code>
+                <br />
+                GoDaddy: <code>{GODADDY_BACKENDS.hospitalFinder.httpsBase}/api/medications/</code>
+              </Alert>
+              <Autocomplete
+                options={rxOptions}
+                getOptionLabel={(o) => `${o.name} (${o.source})`}
+                loading={rxLoading}
+                value={rxPick}
+                inputValue={rxQuery}
+                onInputChange={(_, v) => setRxQuery(v)}
+                onChange={(_, v) => setRxPick(v)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Search drug (RxTerms API)"
+                    placeholder="metformin, lisinopril, atorvastatin…"
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {rxLoading ? <CircularProgress size={18} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                <TextField
+                  label="Sig / directions"
+                  value={rxSig}
+                  onChange={(e) => setRxSig(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="Qty"
+                  value={rxQty}
+                  onChange={(e) => setRxQty(e.target.value)}
+                  sx={{ width: { sm: 100 } }}
+                  size="small"
+                />
+                <TextField
+                  label="Refills"
+                  value={rxRefills}
+                  onChange={(e) => setRxRefills(e.target.value)}
+                  sx={{ width: { sm: 100 } }}
+                  size="small"
+                />
+                <Button
+                  variant="contained"
+                  onClick={addPrescription}
+                  disabled={!rxPick}
+                  sx={{ bgcolor: '#0d7377', whiteSpace: 'nowrap' }}
+                >
+                  Add Rx
+                </Button>
+              </Stack>
+              <Box sx={{ mt: 1.5 }}>
+                {rxList.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No prescriptions yet — search API and click Add Rx.
+                  </Typography>
+                ) : (
+                  <Stack spacing={0.75}>
+                    {rxList.map((r) => (
+                      <Paper key={r.id} variant="outlined" sx={{ p: 1, borderRadius: 1.5 }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                          <Box>
+                            <Typography variant="body2" fontWeight={700}>
+                              {r.drugName}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {r.sig} · qty {r.quantity || '—'} · refills {r.refills || '0'} · via {r.source}
+                            </Typography>
+                          </Box>
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              medicationApi.cancelPrescription(r.id);
+                              refreshRx();
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+            </Paper>
+
+            {/* LABS */}
+            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, borderColor: '#80cbc4' }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                <LabIcon sx={{ color: '#0d7377' }} />
+                <Typography variant="subtitle1" fontWeight={800} color="#0d7377">
+                  Lab orders
+                </Typography>
+                <Chip
+                  size="small"
+                  label={
+                    catalogStatus === 'ok'
+                      ? `${labCatalog.length} tests from API`
+                      : catalogStatus === 'fail'
+                        ? 'Catalog failed'
+                        : 'Loading…'
+                  }
+                  color={catalogStatus === 'ok' ? 'success' : catalogStatus === 'fail' ? 'warning' : 'default'}
+                />
+                {labsLoading && <CircularProgress size={16} />}
+              </Stack>
+              <Alert severity="info" sx={{ mb: 1.5, py: 0.5 }}>
+                Catalog: <code>{GODADDY_BACKENDS.labManagement.tests}</code>
+                <br />
+                Patient attach: <code>{GODADDY_BACKENDS.hospitalFinder.labResults}</code>
+              </Alert>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch">
+                <Autocomplete
+                  sx={{ flex: 1 }}
+                  options={labCatalog}
+                  getOptionLabel={(t) => `${t.test_code} — ${t.test_name}`}
+                  value={labPick}
+                  onChange={(_, v) => setLabPick(v)}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Select lab test from GoDaddy catalog" size="small" />
+                  )}
+                />
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel>Priority</InputLabel>
+                  <Select
+                    label="Priority"
+                    value={orderPriority}
+                    onChange={(e) => setOrderPriority(e.target.value as typeof orderPriority)}
+                  >
+                    <MenuItem value="routine">Routine</MenuItem>
+                    <MenuItem value="urgent">Urgent</MenuItem>
+                    <MenuItem value="stat">STAT</MenuItem>
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  disabled={!labPick || ordering}
+                  onClick={() => labPick && void placeOrder(labPick, 'lab')}
+                  sx={{ bgcolor: '#0d7377' }}
+                >
+                  {ordering ? <CircularProgress size={18} color="inherit" /> : 'Order lab'}
+                </Button>
+              </Stack>
+            </Paper>
+
+            {/* RADIOLOGY */}
+            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, borderColor: '#80cbc4' }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                <RadIcon sx={{ color: '#0d7377' }} />
+                <Typography variant="subtitle1" fontWeight={800} color="#0d7377">
+                  Radiology / imaging orders
+                </Typography>
+                <Chip size="small" label={`${radCatalog.length} imaging tests`} />
+              </Stack>
+              <Alert severity="info" sx={{ mb: 1.5, py: 0.5 }}>
+                Imaging codes (XRAY / CT / MRI / US) from the same GoDaddy lab catalog.
+              </Alert>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Autocomplete
+                  sx={{ flex: 1 }}
+                  options={radCatalog}
+                  getOptionLabel={(t) => `${t.test_code} — ${t.test_name}`}
+                  value={radPick}
+                  onChange={(_, v) => setRadPick(v)}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Select radiology study" size="small" />
+                  )}
+                />
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  disabled={!radPick || ordering}
+                  onClick={() => radPick && void placeOrder(radPick, 'radiology')}
+                >
+                  Order radiology
+                </Button>
+                {onOpenLab && (
+                  <Button variant="outlined" onClick={onOpenLab}>
+                    Full Lab tab
+                  </Button>
+                )}
+              </Stack>
+            </Paper>
+
+            {/* Existing orders */}
+            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                Active lab & radiology orders ({labOrders.length})
+              </Typography>
+              {labOrders.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  None yet — order above; they sync to the Lab tab and Objective notes.
+                </Typography>
+              ) : (
+                <Stack spacing={0.5}>
+                  {labOrders.map((o) => (
+                    <Typography key={o.id} variant="body2">
+                      <Chip
+                        size="small"
+                        label={o.kind}
+                        color={o.kind === 'radiology' ? 'secondary' : 'primary'}
+                        sx={{ mr: 1, height: 22 }}
+                      />
+                      <strong>{o.testCode}</strong> {o.testName}
+                      {o.resultValue ? ` → ${o.resultValue}` : ''} · {o.status} · {o.source}
+                    </Typography>
+                  ))}
+                </Stack>
+              )}
+            </Paper>
+
             <TextField
-              label="Treatment plan"
+              label="Treatment plan notes"
               value={treatmentPlan}
               onChange={(e) => setTreatmentPlan(e.target.value)}
               fullWidth
               multiline
-              minRows={3}
-              placeholder="Medications, lifestyle, procedures…"
+              minRows={2}
+              helperText="Rx lines are appended automatically when you Add Rx"
             />
-            <TextField
-              label="Follow-up"
-              value={followUp}
-              onChange={(e) => setFollowUp(e.target.value)}
-              fullWidth
-            />
+            <TextField label="Follow-up" value={followUp} onChange={(e) => setFollowUp(e.target.value)} fullWidth />
             <TextField
               label="Patient education"
               value={education}
@@ -807,12 +1120,7 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
               multiline
               minRows={2}
             />
-            <TextField
-              label="Referrals"
-              value={referrals}
-              onChange={(e) => setReferrals(e.target.value)}
-              fullWidth
-            />
+            <TextField label="Referrals" value={referrals} onChange={(e) => setReferrals(e.target.value)} fullWidth />
           </Stack>
         )}
       </Box>
@@ -825,7 +1133,7 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
       >
         <Button onClick={onClose}>Close</Button>
         <Button startIcon={<SyncIcon />} onClick={() => void handleSync()} disabled={syncing}>
-          Sync tabs
+          Sync APIs
         </Button>
         <Button
           variant="contained"
