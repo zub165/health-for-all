@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/patient.dart';
 import '../services/api_client.dart';
 import '../services/hybrid_data_service.dart';
 

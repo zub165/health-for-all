@@ -974,16 +974,136 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
         {/* PLAN — Rx + Labs + Radiology */}
         {soapTab === 3 && (
           <Stack spacing={2}>
-            {icdSuggest && icdSuggest.matched_rules.length > 0 && (
-              <Alert severity="success" sx={{ borderRadius: 2 }}>
-                <strong>ICD-driven orders ready:</strong>{' '}
-                {icdSuggest.recommended_lab_codes.slice(0, 8).join(', ')}
-                {icdSuggest.recommended_imaging_codes.length
-                  ? ` · Imaging: ${icdSuggest.recommended_imaging_codes.join(', ')}`
-                  : ''}
-                . Use chips on Assessment or order from catalogs below.
-              </Alert>
-            )}
+            {/* AI recommendations ALWAYS first on Plan — was only on Assessment before */}
+            <Paper
+              variant="outlined"
+              sx={{ p: 1.5, borderRadius: 2, borderColor: '#0d7377', bgcolor: '#e8f5f4' }}
+            >
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
+                <Typography variant="subtitle1" fontWeight={800} color="#0d7377">
+                  AI recommendations (ICD-10 → Labs & Radiology)
+                </Typography>
+                {icdSuggestLoading && <CircularProgress size={16} />}
+                {icdSuggest && (
+                  <Chip
+                    size="small"
+                    color={icdSuggest.source === 'live' ? 'success' : 'info'}
+                    label={
+                      icdSuggest.source === 'live'
+                        ? 'Live GoDaddy API'
+                        : 'Guideline map (offline OK)'
+                    }
+                  />
+                )}
+              </Stack>
+
+              {icdCodes.length === 0 ? (
+                <>
+                  <Alert severity="warning" sx={{ mb: 1 }}>
+                    No ICD-10 codes selected yet. Tap a common diagnosis below (or use the{' '}
+                    <strong>A · ICD-10 Assessment</strong> tab) — AI will then suggest labs and
+                    imaging to order.
+                  </Alert>
+                  <Typography variant="caption" fontWeight={700} display="block" sx={{ mb: 0.5 }}>
+                    Quick-add ICD-10 to unlock AI orders
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                    {(commonIcd.length ? commonIcd : [
+                      { code: 'I10', description: 'Essential hypertension' },
+                      { code: 'E11.9', description: 'Type 2 diabetes mellitus' },
+                      { code: 'E78.5', description: 'Hyperlipidemia' },
+                      { code: 'I50.9', description: 'Heart failure' },
+                      { code: 'J44.9', description: 'COPD' },
+                      { code: 'Z00.00', description: 'General adult exam' },
+                    ]).slice(0, 12).map((c) => (
+                      <Chip
+                        key={c.code}
+                        clickable
+                        color="primary"
+                        variant="outlined"
+                        label={`${c.code} ${c.description}`}
+                        onClick={() => addIcd(c)}
+                        sx={{ borderRadius: 2 }}
+                      />
+                    ))}
+                  </Box>
+                </>
+              ) : (
+                <>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+                    {icdCodes.map((c) => (
+                      <Chip
+                        key={c.code}
+                        size="small"
+                        color="primary"
+                        label={c.code}
+                        onDelete={() =>
+                          setIcdCodes((prev) => prev.filter((x) => x.code !== c.code))
+                        }
+                      />
+                    ))}
+                  </Box>
+                  {icdSuggest?.matched_rules.map((r) => (
+                    <Alert
+                      key={`${r.icd_matched}-${r.condition}`}
+                      severity="info"
+                      sx={{ mb: 1, py: 0.5 }}
+                    >
+                      <strong>{r.icd_matched}</strong> → {r.condition}: {r.rationale}
+                    </Alert>
+                  ))}
+                  {icdSuggest && icdSuggest.matched_rules.length === 0 && !icdSuggestLoading && (
+                    <Alert severity="warning" sx={{ mb: 1 }}>
+                      No guideline match for {icdCodes.map((c) => c.code).join(', ')}. Try I10,
+                      E11.9, E78.5, I50.9, or J44.9.
+                    </Alert>
+                  )}
+                  <Typography variant="caption" fontWeight={700} display="block" sx={{ mb: 0.5 }}>
+                    Suggested labs — click to order
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1 }}>
+                    {(icdSuggest?.labs || []).map((t) => (
+                      <Chip
+                        key={`plan-lab-${t.test_code}`}
+                        clickable
+                        color="primary"
+                        label={`Order ${t.test_code}`}
+                        onClick={() => void placeOrder(t, 'lab')}
+                        disabled={ordering}
+                      />
+                    ))}
+                    {icdSuggest && icdSuggest.labs.length === 0 && !icdSuggestLoading && (
+                      <Typography variant="body2" color="text.secondary">
+                        No lab matches in catalog — Sync APIs or pick from Lab orders below.
+                      </Typography>
+                    )}
+                  </Box>
+                  <Typography variant="caption" fontWeight={700} display="block" sx={{ mb: 0.5 }}>
+                    Suggested radiology / cardiac — click to order
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                    {(icdSuggest?.imaging || []).map((t) => (
+                      <Chip
+                        key={`plan-img-${t.test_code}`}
+                        clickable
+                        color="secondary"
+                        label={`Order ${t.test_code}`}
+                        onClick={() =>
+                          void placeOrder(t, isImagingTest(t) ? 'radiology' : 'lab')
+                        }
+                        disabled={ordering}
+                      />
+                    ))}
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                    {icdSuggest?.disclaimer}
+                    <br />
+                    API: {GODADDY_BACKENDS.labManagement.icdRecommendations}
+                  </Typography>
+                </>
+              )}
+            </Paper>
+
             {/* RX */}
             <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, borderColor: '#80cbc4' }}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>

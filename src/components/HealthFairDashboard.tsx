@@ -159,7 +159,7 @@ const HealthFairDashboard: React.FC = () => {
   const [filterRiskLevel, setFilterRiskLevel] = useState('');
   const [sortBy, setSortBy] = useState('registered_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [activeTab, setActiveTab] = useState<'patients' | 'volunteers'>('patients');
+  const [activeTab, setActiveTab] = useState<'patients' | 'volunteers' | 'print'>('patients');
   const [volunteers, setVolunteers] = useState<VolunteerData[]>([]);
   const [volunteerLoading, setVolunteerLoading] = useState(false);
   const [volunteerError, setVolunteerError] = useState<string | null>(null);
@@ -292,10 +292,10 @@ const HealthFairDashboard: React.FC = () => {
     // Search term filter
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = 
-        patient.full_name.toLowerCase().includes(searchLower) ||
-        patient.email.toLowerCase().includes(searchLower) ||
-        patient.phone.includes(searchTerm);
+      const matchesSearch =
+        (patient.full_name || '').toLowerCase().includes(searchLower) ||
+        (patient.email || '').toLowerCase().includes(searchLower) ||
+        (patient.phone || '').includes(searchTerm);
       if (!matchesSearch) return false;
     }
 
@@ -675,6 +675,30 @@ const HealthFairDashboard: React.FC = () => {
         </Button>
       </Box>
 
+      <Tabs
+        value={activeTab}
+        onChange={(_, value) => setActiveTab(value as 'patients' | 'volunteers' | 'print')}
+        textColor="primary"
+        indicatorColor="primary"
+        variant="scrollable"
+        allowScrollButtonsMobile
+        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab value="patients" label={`Patients (${patients.length})`} />
+        <Tab
+          value="volunteers"
+          label={`Volunteers (${volunteerSummaries.length})`}
+          icon={<VolunteerIcon fontSize="small" />}
+          iconPosition="start"
+        />
+        <Tab value="print" label="Print / AI report" icon={<AssessmentIcon fontSize="small" />} iconPosition="start" />
+      </Tabs>
+      <Alert severity="info" sx={{ mb: 2 }}>
+        Showing <strong>{activeTab === 'patients' ? 'patient list' : activeTab === 'volunteers' ? 'volunteer roster' : 'printable assessment & AI results'}</strong> below.
+        {activeTab === 'patients' && ` ${sortedPatients.length} row(s) visible.`}
+        {activeTab === 'volunteers' && ` ${volunteerSummaries.length} volunteer(s).`}
+      </Alert>
+
       {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
@@ -682,7 +706,8 @@ const HealthFairDashboard: React.FC = () => {
         </Alert>
       )}
 
-      {/* Search and Filter Controls */}
+      {/* Search and Filter Controls — patients tab only */}
+      {activeTab === 'patients' && (
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -856,8 +881,10 @@ const HealthFairDashboard: React.FC = () => {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Debug Information */}
+      {activeTab === 'patients' && (
       <Alert severity="info" sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Box sx={{ flex: 1 }}>
@@ -894,6 +921,7 @@ const HealthFairDashboard: React.FC = () => {
           </Button>
         </Box>
       </Alert>
+      )}
 
       {/* Dashboard Stats */}
       {dashboardStats && (
@@ -983,23 +1011,7 @@ const HealthFairDashboard: React.FC = () => {
         </Box>
       )}
 
-      <Tabs
-        value={activeTab}
-        onChange={(_, value) => setActiveTab(value as 'patients' | 'volunteers')}
-        textColor="primary"
-        indicatorColor="primary"
-        variant="scrollable"
-        allowScrollButtonsMobile
-        sx={{ mb: 3 }}
-      >
-        <Tab value="patients" label={`Patients (${patients.length})`} />
-        <Tab
-          value="volunteers"
-          label={`Volunteers (${volunteerSummaries.length})`}
-          icon={<VolunteerIcon fontSize="small" />}
-          iconPosition="start"
-        />
-      </Tabs>
+
 
       {/* Patients Table */}
       {activeTab === 'patients' && (
@@ -1034,6 +1046,15 @@ const HealthFairDashboard: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
+              {sortedPatients.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7}>
+                    <Alert severity="warning">
+                      No patients to show{patients.length > 0 ? ' (filters hid all rows — click Clear All)' : ' — register a patient or click Refresh'}.
+                    </Alert>
+                  </TableCell>
+                </TableRow>
+              )}
               {sortedPatients.map((patient) => (
                 <TableRow key={patient.id}>
                   <TableCell>
@@ -1348,7 +1369,98 @@ const HealthFairDashboard: React.FC = () => {
         onSuccess={handleRegistrationSuccess}
       />
 
-      {/* Patient Detail Dialog */}
+      
+      {activeTab === 'print' && (
+        <Card sx={{ p: 2 }} id="hfa-print-ai-report">
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+            <Typography variant="h6">Print assessment &amp; AI results</Typography>
+            <Button
+              variant="contained"
+              startIcon={<AssessmentIcon />}
+              onClick={() => {
+                const el = document.getElementById('hfa-print-ai-report-body');
+                if (!el) return;
+                const w = window.open('', '_blank', 'width=900,height=1000');
+                if (!w) {
+                  alert('Allow popups to print');
+                  return;
+                }
+                w.document.write(`<!DOCTYPE html><html><head><title>Health Fair AI Report</title>
+                  <style>body{font-family:Arial,sans-serif;padding:24px;color:#111}table{width:100%;border-collapse:collapse;margin-top:12px}
+                  th,td{border:1px solid #ccc;padding:8px;text-align:left}h1{margin:0 0 8px}h2{margin-top:24px}</style>
+                  </head><body>${el.innerHTML}<script>window.onload=()=>{window.print();}</script></body></html>`);
+                w.document.close();
+              }}
+            >
+              Print report
+            </Button>
+          </Box>
+          <div id="hfa-print-ai-report-body">
+            <Typography variant="h5" gutterBottom>Health Fair — Assessment &amp; AI Summary</Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Generated {new Date().toLocaleString()} · Patients: {patients.length} · Volunteers: {volunteerSummaries.length}
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 2 }}>Patient assessments / AI health scores</Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Patient</TableCell>
+                    <TableCell>Age/Gender</TableCell>
+                    <TableCell>AI Health Score</TableCell>
+                    <TableCell>Risk</TableCell>
+                    <TableCell>Follow-up</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {patients.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5}>No patients loaded.</TableCell>
+                    </TableRow>
+                  )}
+                  {patients.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell>{p.full_name}<br /><Typography variant="caption">{p.email}</Typography></TableCell>
+                      <TableCell>{p.age || '—'} / {p.gender || '—'}</TableCell>
+                      <TableCell>{p.ai_health_score ?? 'Not assessed'}</TableCell>
+                      <TableCell>{getHealthScoreLabel(p.ai_health_score)}</TableCell>
+                      <TableCell>{p.requires_follow_up ? 'Yes' : 'No'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Typography variant="h6" sx={{ mt: 3 }}>Active volunteers</Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Organization</TableCell>
+                    <TableCell>Role</TableCell>
+                    <TableCell>Contact</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {volunteerSummaries.length === 0 && (
+                    <TableRow><TableCell colSpan={4}>No volunteers registered.</TableCell></TableRow>
+                  )}
+                  {volunteerSummaries.map((v) => (
+                    <TableRow key={v.id}>
+                      <TableCell>{v.name}</TableCell>
+                      <TableCell>{v.organization}</TableCell>
+                      <TableCell>{v.role}</TableCell>
+                      <TableCell>{v.email} · {v.phone}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </div>
+        </Card>
+      )}
+
+{/* Patient Detail Dialog */}
       <HealthFairPatientDetail
         patient={viewingPatient}
         isOpen={showDetailDialog}

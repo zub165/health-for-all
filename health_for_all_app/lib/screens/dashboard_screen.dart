@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../models/patient.dart';
+import '../models/volunteer.dart';
 import '../services/hybrid_data_service.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -9,16 +12,27 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with SingleTickerProviderStateMixin {
   bool _isSyncing = false;
   bool _loading = true;
   String? _error;
   DashboardStats? _stats;
+  List<Patient> _patients = const [];
+  List<Volunteer> _volunteers = const [];
+  late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     _loadStats();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadStats() async {
@@ -27,10 +41,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _error = null;
     });
     try {
-      final stats = await HybridDataService.instance.fetchDashboardStats();
+      final service = HybridDataService.instance;
+      final results = await Future.wait([
+        service.fetchDashboardStats(),
+        service.fetchPatients(),
+        service.fetchVolunteers(),
+      ]);
       if (!mounted) return;
       setState(() {
-        _stats = stats;
+        _stats = results[0] as DashboardStats;
+        _patients = results[1] as List<Patient>;
+        _volunteers = results[2] as List<Volunteer>;
         _loading = false;
       });
     } catch (error) {
@@ -62,103 +83,154 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final stats = _stats;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (_loading) const LinearProgressIndicator(minHeight: 3),
-        Text(
-          'Health Fair Dashboard',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Live KPIs from api.mywaitime.com (GoDaddy) with local offline cache.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            leading: Icon(Icons.tips_and_updates_outlined,
-                color: Theme.of(context).colorScheme.primary),
-            title: const Text('Quick tip'),
-            subtitle: const Text(
-              'Patients → Select → search “EE” → Select all → Delete all matches. '
-              'Assess tab includes vitals, HbA1c, lipids, carotid Doppler, and PHQ/GAD questions.',
-            ),
+  Future<void> _printAiReport() async {
+    final buffer = StringBuffer()
+      ..writeln('Health For All — Assessment & AI Report')
+      ..writeln('Generated: ${DateTime.now().toIso8601String()}')
+      ..writeln('Patients: ${_patients.length} · Volunteers: ${_volunteers.length}')
+      ..writeln('')
+      ..writeln('=== PATIENTS / AI SCORES ===');
+    for (final p in _patients) {
+      buffer.writeln(
+        '${p.fullName} | ${p.email ?? '—'} | score=${p.healthScore} | risk=${p.riskLevel}',
+      );
+    }
+    buffer.writeln('');
+    buffer.writeln('=== VOLUNTEERS ===');
+    for (final v in _volunteers) {
+      buffer.writeln(
+        '${v.fullName} | ${v.organization} | ${v.role} | ${v.email ?? '—'}',
+      );
+    }
+    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Print / AI report'),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: SelectableText(buffer.toString()),
           ),
         ),
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          Text(_error!, style: TextStyle(color: Colors.red.shade700)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Report copied — paste into Notes/Docs to print')),
+              );
+            },
+            child: const Text('Copied to clipboard'),
+          ),
         ],
-        const SizedBox(height: 24),
-        Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          children: [
-            _DashboardCard(
-              title: 'Total Patients',
-              value: '${stats?.totalPatients ?? '—'}',
-              icon: Icons.people,
-              subtitle: '${stats?.pendingPatients ?? 0} pending upload',
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            _DashboardCard(
-              title: 'Assessments Today',
-              value: '${stats?.assessmentsToday ?? '—'}',
-              icon: Icons.monitor_heart,
-              subtitle: 'Cached on this device',
-              color: Colors.orange.shade600,
-            ),
-            _DashboardCard(
-              title: 'Volunteers',
-              value: '${stats?.totalVolunteers ?? '—'}',
-              icon: Icons.volunteer_activism,
-              subtitle: '${stats?.pendingVolunteers ?? 0} pending',
-              color: Colors.green.shade600,
-            ),
-            _DashboardCard(
-              title: 'API Status',
-              value: _isSyncing
-                  ? 'Syncing…'
-                  : (stats?.apiHealthy == true ? 'Online' : 'Offline'),
-              icon: Icons.cloud,
-              subtitle: stats?.lastSync == null
-                  ? 'Never synced'
-                  : 'Last sync ${_timeAgo(stats!.lastSync!)}',
-              color: stats?.apiHealthy == true ? Colors.indigo : Colors.blueGrey,
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        _SyncPanel(
-          isSyncing: _isSyncing,
-          lastSync: stats?.lastSync ?? DateTime.now().subtract(const Duration(days: 1)),
-          apiHealthy: stats?.apiHealthy ?? false,
-          onSync: _handleManualSync,
-        ),
-        const SizedBox(height: 24),
-        _SourceBreakdown(
-          patients: stats?.totalPatients ?? 0,
-          pending: stats?.pendingPatients ?? 0,
-          volunteers: stats?.totalVolunteers ?? 0,
-          apiHealthy: stats?.apiHealthy ?? false,
-        ),
-      ],
+      ),
     );
   }
 
-  String _timeAgo(DateTime dateTime) {
-    final diff = DateTime.now().difference(dateTime);
-    if (diff.inMinutes < 1) return 'moments ago';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-    if (diff.inHours < 24) return '${diff.inHours} hr ago';
-    return '${diff.inDays} day${diff.inDays == 1 ? '' : 's'} ago';
+  @override
+  Widget build(BuildContext context) {
+    final stats = _stats;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_loading) const LinearProgressIndicator(minHeight: 3),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Health Fair Dashboard',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Live KPIs from api.mywaitime.com with local offline cache.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!, style: TextStyle(color: Colors.red.shade700)),
+              ],
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _DashboardCard(
+                    title: 'Total Patients',
+                    value: '${stats?.totalPatients ?? _patients.length}',
+                    icon: Icons.people,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  _DashboardCard(
+                    title: "Today's Assessments",
+                    value: '${stats?.assessmentsToday ?? '—'}',
+                    icon: Icons.monitor_heart,
+                    color: Colors.orange.shade600,
+                  ),
+                  _DashboardCard(
+                    title: 'Volunteers',
+                    value: '${stats?.totalVolunteers ?? _volunteers.length}',
+                    icon: Icons.volunteer_activism,
+                    color: Colors.green.shade600,
+                  ),
+                  _DashboardCard(
+                    title: 'API',
+                    value: _isSyncing
+                        ? 'Sync…'
+                        : (stats?.apiHealthy == true ? 'Online' : 'Offline'),
+                    icon: Icons.cloud,
+                    color: stats?.apiHealthy == true
+                        ? Colors.indigo
+                        : Colors.blueGrey,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  onPressed: _isSyncing ? null : _handleManualSync,
+                  icon: const Icon(Icons.sync),
+                  label: Text(_isSyncing ? 'Syncing…' : 'Sync Now'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: 'Patients (${_patients.length})'),
+            Tab(text: 'Volunteers (${_volunteers.length})'),
+            const Tab(text: 'Print / AI'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _PatientsTab(patients: _patients, onRefresh: _loadStats),
+              _VolunteersTab(volunteers: _volunteers, onRefresh: _loadStats),
+              _PrintTab(
+                patients: _patients,
+                volunteers: _volunteers,
+                onPrint: _printAiReport,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -167,50 +239,32 @@ class _DashboardCard extends StatelessWidget {
     required this.title,
     required this.value,
     required this.icon,
-    required this.subtitle,
     required this.color,
   });
 
   final String title;
   final String value;
   final IconData icon;
-  final String subtitle;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 168,
+      width: 150,
       child: Card(
-        elevation: 0,
-        color: Theme.of(context).colorScheme.surface,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: color, size: 28),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
+              Icon(icon, color: color),
+              const SizedBox(height: 8),
+              Text(value,
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.bold)),
+              Text(title, style: Theme.of(context).textTheme.bodySmall),
             ],
           ),
         ),
@@ -219,177 +273,148 @@ class _DashboardCard extends StatelessWidget {
   }
 }
 
-class _SyncPanel extends StatelessWidget {
-  const _SyncPanel({
-    required this.isSyncing,
-    required this.lastSync,
-    required this.apiHealthy,
-    required this.onSync,
-  });
-
-  final bool isSyncing;
-  final DateTime lastSync;
-  final bool apiHealthy;
-  final VoidCallback onSync;
+class _PatientsTab extends StatelessWidget {
+  const _PatientsTab({required this.patients, required this.onRefresh});
+  final List<Patient> patients;
+  final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  isSyncing ? Icons.sync : Icons.cloud_done,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Hybrid Sync',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const Spacer(),
-                OutlinedButton.icon(
-                  onPressed: isSyncing ? null : onSync,
-                  icon: const Icon(Icons.refresh),
-                  label: Text(isSyncing ? 'Syncing…' : 'Sync Now'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              isSyncing
-                  ? 'Uploading pending records to https://api.mywaitime.com/api/ …'
-                  : apiHealthy
-                      ? 'Connected to GoDaddy backend. Last sync ${_timeAgo(lastSync)}.'
-                      : 'Backend unreachable — showing local cache. Sync when online.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
+    if (patients.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('No patients loaded. Tap refresh or sync.'),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: onRefresh, child: const Text('Refresh')),
+            ],
+          ),
         ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(12),
+        itemCount: patients.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, i) {
+          final p = patients[i];
+          return ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.person)),
+            title: Text(p.fullName),
+            subtitle: Text(
+              '${p.email ?? 'no email'} · ${p.phone ?? 'no phone'}\n'
+              'AI score: ${p.healthScore} · ${p.riskLevel}',
+            ),
+            isThreeLine: true,
+          );
+        },
       ),
     );
   }
+}
 
-  String _timeAgo(DateTime dateTime) {
-    final diff = DateTime.now().difference(dateTime);
-    if (diff.inMinutes < 1) return 'moments ago';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
-    if (diff.inHours < 24) return '${diff.inHours} hours ago';
-    return '${diff.inDays} days ago';
+class _VolunteersTab extends StatelessWidget {
+  const _VolunteersTab({required this.volunteers, required this.onRefresh});
+  final List<Volunteer> volunteers;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    if (volunteers.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('No volunteers yet. Register on the Volunteers tab.'),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: onRefresh, child: const Text('Refresh')),
+            ],
+          ),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(12),
+        itemCount: volunteers.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, i) {
+          final v = volunteers[i];
+          return ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.volunteer_activism)),
+            title: Text(v.fullName),
+            subtitle: Text(
+              '${v.organization} · ${v.role}\n'
+              '${v.email ?? ''} · ${v.phone ?? ''}',
+            ),
+            isThreeLine: true,
+          );
+        },
+      ),
+    );
   }
 }
 
-class _SourceBreakdown extends StatelessWidget {
-  const _SourceBreakdown({
+class _PrintTab extends StatelessWidget {
+  const _PrintTab({
     required this.patients,
-    required this.pending,
     required this.volunteers,
-    required this.apiHealthy,
+    required this.onPrint,
   });
 
-  final int patients;
-  final int pending;
-  final int volunteers;
-  final bool apiHealthy;
+  final List<Patient> patients;
+  final List<Volunteer> volunteers;
+  final VoidCallback onPrint;
 
   @override
   Widget build(BuildContext context) {
-    final rows = [
-      _SourceRow(
-        label: 'Main API (GoDaddy)',
-        count: patients,
-        status: apiHealthy ? 'Healthy' : 'Unreachable',
-        icon: Icons.cloud,
-        color: apiHealthy ? Colors.green.shade600 : Colors.red.shade600,
-      ),
-      _SourceRow(
-        label: 'Local Cache',
-        count: pending,
-        status: pending > 0 ? 'Pending upload' : 'Clean',
-        icon: Icons.offline_pin,
-        color: Colors.blueGrey.shade700,
-      ),
-      _SourceRow(
-        label: 'Volunteers (local hybrid)',
-        count: volunteers,
-        status: 'No /api/volunteers/ on server yet',
-        icon: Icons.volunteer_activism,
-        color: Colors.orange.shade700,
-      ),
-    ];
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Source Breakdown',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            for (final row in rows) ...[
-              row,
-              const Divider(height: 16),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SourceRow extends StatelessWidget {
-  const _SourceRow({
-    required this.label,
-    required this.count,
-    required this.status,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final int count;
-  final String status;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
+    return ListView(
+      padding: const EdgeInsets.all(16),
       children: [
-        CircleAvatar(
-          backgroundColor: color.withOpacity(0.1),
-          child: Icon(icon, color: color),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: Theme.of(context).textTheme.titleMedium),
-              Text(
-                status,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ),
-        ),
         Text(
-          '$count',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+          'Print assessment & AI results',
+          style: Theme.of(context).textTheme.titleLarge,
         ),
+        const SizedBox(height: 8),
+        Text(
+          'Builds a report of all patient AI health scores and volunteers, '
+          'copies it to the clipboard so you can paste into Docs/Notes and print.',
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: onPrint,
+          icon: const Icon(Icons.print),
+          label: const Text('Generate & copy AI report'),
+        ),
+        const SizedBox(height: 24),
+        Text('Preview · ${patients.length} patients',
+            style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        ...patients.take(20).map(
+              (p) => ListTile(
+                dense: true,
+                title: Text(p.fullName),
+                trailing: Text('${p.healthScore}'),
+              ),
+            ),
+        const Divider(),
+        Text('Preview · ${volunteers.length} volunteers',
+            style: Theme.of(context).textTheme.titleMedium),
+        ...volunteers.take(20).map(
+              (v) => ListTile(
+                dense: true,
+                title: Text(v.fullName),
+                subtitle: Text(v.organization),
+              ),
+            ),
       ],
     );
   }
