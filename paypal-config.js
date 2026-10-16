@@ -14,8 +14,8 @@ window.HFA_PAYPAL = {
       "password": "Bismilah786$"
     },
     {
-      "email": "zub165@yahoo.com",
-      "password": "HealthForAll786$"
+      "email": "admin",
+      "password": "HealthForAll$"
     }
   ],
   "storageKey": "healthforall_web_paid_v1",
