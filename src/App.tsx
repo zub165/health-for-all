@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { HashRouter as Router } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -210,6 +210,22 @@ function AppShell() {
     setCurrentView(view);
     setMobileOpen(false);
   };
+
+  // Cross-tab navigation from clinical note (e.g. Lab & Radiology)
+  useEffect(() => {
+    const onNav = (ev: Event) => {
+      const detail = (ev as CustomEvent<string>).detail as AppView | undefined;
+      if (!detail) return;
+      if (STAFF_ONLY_VIEWS.has(detail) && !isStaff) {
+        setCurrentView('doctor');
+        return;
+      }
+      setCurrentView(detail);
+      setMobileOpen(false);
+    };
+    window.addEventListener('hfa-navigate', onNav as EventListener);
+    return () => window.removeEventListener('hfa-navigate', onNav as EventListener);
+  }, [isStaff]);
 
   const handleDoctorLogin = (name: string) => {
     try {

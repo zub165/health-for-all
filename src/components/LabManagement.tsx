@@ -83,6 +83,21 @@ const LabManagement: React.FC = () => {
     void loadTests();
   }, []);
 
+  // Pre-select patient when opened from Doctor clinical note
+  useEffect(() => {
+    try {
+      const focusId = sessionStorage.getItem('hfa_focus_patient_id');
+      if (!focusId || patients.length === 0) return;
+      const match = patients.find((p) => p.id === focusId);
+      if (match) {
+        setSelectedPatient(match);
+        sessionStorage.removeItem('hfa_focus_patient_id');
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [patients]);
+
   useEffect(() => {
     if (selectedPatient?.id) {
       void loadOrders(selectedPatient.id, selectedPatient.full_name || '');
