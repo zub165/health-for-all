@@ -63,32 +63,34 @@ class HybridPatientService {
 
     console.log('🔄 Hybrid Patient Service: Starting multi-source fetch...');
 
-    // 1. Try cached data first (fastest)
-    try {
-      const cachedPatients = this.getCachedPatients();
-      if (cachedPatients.length > 0) {
-        allPatients = [...allPatients, ...cachedPatients];
-        sources.cached = cachedPatients.length;
-        console.log('✅ Cached patients loaded:', cachedPatients.length);
-      }
-    } catch (error) {
-      console.warn('⚠️ Cache failed:', error);
-    }
-
-    // 2. Try Main API (most comprehensive)
+    // 1. Main API is source of truth when online — do NOT merge stale cache first
+    //    (old cache was re-adding deleted patients after DELETE + refresh).
+    let mainApiOk = false;
     try {
       const mainApiPatients = await this.fetchMainApiPatients();
-      if (mainApiPatients.length > 0) {
-        allPatients = [...allPatients, ...mainApiPatients];
-        sources.main_api = mainApiPatients.length;
-        console.log('✅ Main API patients loaded:', mainApiPatients.length);
-        // Update cache
-        this.updateCache(mainApiPatients);
-      }
+      mainApiOk = true;
+      allPatients = [...mainApiPatients];
+      sources.main_api = mainApiPatients.length;
+      console.log('✅ Main API patients loaded:', mainApiPatients.length);
+      this.updateCache(mainApiPatients);
     } catch (error) {
       const errorMsg = `Main API failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
       errors.push(errorMsg);
       console.warn('⚠️ Main API failed:', error);
+    }
+
+    // 2. Cache only as offline fallback when Main API is unreachable
+    if (!mainApiOk) {
+      try {
+        const cachedPatients = this.getCachedPatients();
+        if (cachedPatients.length > 0) {
+          allPatients = [...allPatients, ...cachedPatients];
+          sources.cached = cachedPatients.length;
+          console.log('✅ Cached patients loaded (offline fallback):', cachedPatients.length);
+        }
+      } catch (error) {
+        console.warn('⚠️ Cache failed:', error);
+      }
     }
 
     // 3. Try Health Fair API (specialized)
@@ -159,13 +161,15 @@ class HybridPatientService {
     const isLocalhost = typeof window !== 'undefined' && 
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     
+    // Default API page size is 20 — without page_size, deletes look like they "come back"
+    // because the next page of duplicates is loaded on refresh.
     const endpoints = isLocalhost
       ? [
-          'http://api.mywaitime.com:3015/api/patients/', // Direct to backend
+          'http://api.mywaitime.com:3015/api/patients/?page_size=500',
         ]
       : [
-          'https://api.mywaitime.com/api/patients/', // Via Nginx (port 443)
-          'https://api.mywaitime.com/health-fair/patients/', // Health Fair fallback
+          'https://api.mywaitime.com/api/patients/?page_size=500',
+          'https://api.mywaitime.com/health-fair/patients/?page_size=500',
         ];
 
     for (const endpoint of endpoints) {
@@ -454,6 +458,46 @@ class HybridPatientService {
       console.log('💾 Cache updated with', patients.length, 'patients');
     } catch (error) {
       console.warn('Cache update failed:', error);
+    }
+  }
+
+  /** Remove deleted IDs from browser cache + local hybrid list so they cannot reappear. */
+  purgeLocalPatients(ids: string[]): void {
+    const idSet = new Set(ids.filter(Boolean));
+    if (idSet.size === 0) return;
+    try {
+      const cached = localStorage.getItem(this.cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const data = Array.isArray(parsed?.data) ? parsed.data : [];
+        parsed.data = data.filter((p: { id?: string }) => !idSet.has(String(p?.id)));
+        parsed.timestamp = Date.now();
+        localStorage.setItem(this.cacheKey, JSON.stringify(parsed));
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      const localRaw = localStorage.getItem('health_for_all_patients');
+      if (localRaw) {
+        const list = JSON.parse(localRaw);
+        if (Array.isArray(list)) {
+          localStorage.setItem(
+            'health_for_all_patients',
+            JSON.stringify(list.filter((p: { id?: string }) => !idSet.has(String(p?.id))))
+          );
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  clearPatientCache(): void {
+    try {
+      localStorage.removeItem(this.cacheKey);
+    } catch {
+      /* ignore */
     }
   }
 

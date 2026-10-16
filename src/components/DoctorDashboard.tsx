@@ -56,7 +56,7 @@ import VitalsTracking from './VitalsTracking';
 import RecommendationForm from './RecommendationForm';
 import EmailPreview from './EmailPreview';
 import UnifiedSOAPNote from './UnifiedSOAPNote';
-import { PatientData } from '../services/hybridPatientService';
+import { PatientData, hybridPatientService } from '../services/hybridPatientService';
 import { useAppData, notifyAppDataChanged } from '../context/AppDataContext';
 import ExportActions from './ExportActions';
 import { patientLabService, PatientLabOrder } from '../services/patientLabService';
@@ -529,7 +529,7 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
     const count = selectedIds.size;
     if (
       !window.confirm(
-        `Delete ${count} selected patient${count === 1 ? '' : 's'}? This removes them from GoDaddy and this browser.`
+        `Delete ${count} selected patient${count === 1 ? '' : 's'} permanently from the GoDaddy database?`
       )
     ) {
       return;
@@ -537,29 +537,33 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
     setBulkDeleting(true);
     let deleted = 0;
     let failed = 0;
+    const removedIds: string[] = [];
+    // Pace deletes to avoid nginx 429 Too Many Requests
     for (const id of Array.from(selectedIds)) {
       try {
         const response = await patientApi.delete(id);
-        if (response.success || (response.message || '').includes('not found')) {
+        if (response.success) {
           deleted += 1;
+          removedIds.push(id);
         } else {
           failed += 1;
         }
       } catch {
-        // Still remove from UI / local hybrid
-        deleted += 1;
+        failed += 1;
       }
+      await new Promise((r) => setTimeout(r, 120));
     }
-    setPatients((prev) => prev.filter((p) => !selectedIds.has(p.id!)));
+    hybridPatientService.purgeLocalPatients(removedIds);
+    setPatients((prev) => prev.filter((p) => !removedIds.includes(p.id!)));
     setSelectedIds(new Set());
     setSelectionMode(false);
     setBulkDeleting(false);
-    void refreshPatients();
+    await refreshPatients();
     notifyAppDataChanged();
     alert(
       failed === 0
-        ? `Deleted ${deleted} patient${deleted === 1 ? '' : 's'}.`
-        : `Deleted ${deleted}, ${failed} failed.`
+        ? `Permanently deleted ${deleted} patient${deleted === 1 ? '' : 's'} from GoDaddy.`
+        : `Deleted ${deleted} from GoDaddy; ${failed} still on the server (try again).`
     );
   };
 
@@ -571,53 +575,41 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
 
   const handleConfirmDelete = async () => {
     if (!deletingPatient) return;
-    
+
     setDeleteLoading(true);
     try {
-      // Check if this is a local patient placeholder
-      const isLocalPatient = deletingPatient.email === 'no-email@local.com' ||
-                            deletingPatient.name === 'Local Patient' ||
-                            deletingPatient.full_name === 'Local Patient';
-      
+      const isLocalPatient =
+        deletingPatient.email === 'no-email@local.com' ||
+        deletingPatient.name === 'Local Patient' ||
+        deletingPatient.full_name === 'Local Patient';
+
       if (isLocalPatient) {
-        // Just remove from UI - no backend call needed
-        setPatients(prev => prev.filter(p => p.id !== deletingPatient.id));
+        if (deletingPatient.id) {
+          hybridPatientService.purgeLocalPatients([deletingPatient.id]);
+        }
+        setPatients((prev) => prev.filter((p) => p.id !== deletingPatient.id));
         setShowDeleteDialog(false);
         setDeletingPatient(null);
-        alert('✅ Local patient removed successfully!');
-        setDeleteLoading(false);
+        alert('Local patient removed.');
         return;
       }
-      
-      // Try to delete from backend
+
       const response = await patientApi.delete(deletingPatient.id!);
       if (response.success) {
-        console.log('Patient deleted successfully');
-        // Remove from UI immediately
-        setPatients(prev => prev.filter(p => p.id !== deletingPatient.id));
+        hybridPatientService.purgeLocalPatients([deletingPatient.id!]);
+        setPatients((prev) => prev.filter((p) => p.id !== deletingPatient.id));
         setShowDeleteDialog(false);
         setDeletingPatient(null);
-        alert('✅ Patient deleted successfully!');
+        await refreshPatients();
+        notifyAppDataChanged();
+        alert('Patient permanently deleted from GoDaddy database.');
       } else {
-        // Even if backend fails, remove from UI if it's a "not found" error
-        const errorMsg = response.message || '';
-        if (errorMsg.includes('not found') || errorMsg.includes('404')) {
-          setPatients(prev => prev.filter(p => p.id !== deletingPatient.id));
-          setShowDeleteDialog(false);
-          setDeletingPatient(null);
-          alert('✅ Patient removed (was not found in backend)');
-        } else {
-          console.error('Failed to delete patient:', response.message);
-          alert(`Failed to delete patient: ${response.message}`);
-        }
+        console.error('Failed to delete patient:', response.message);
+        alert(`Could not delete from GoDaddy: ${response.message}`);
       }
     } catch (error) {
       console.error('Error deleting patient:', error);
-      // Remove from UI anyway
-      setPatients(prev => prev.filter(p => p.id !== deletingPatient.id));
-      setShowDeleteDialog(false);
-      setDeletingPatient(null);
-      alert('✅ Patient removed from view');
+      alert('Delete failed — patient is still on the GoDaddy database.');
     } finally {
       setDeleteLoading(false);
     }
@@ -1142,10 +1134,9 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
           </Alert>
         )}
 
-        {/* Bulk select first (delete EE duplicates) — then search */}
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Duplicate patients? Click <strong>Select to delete</strong>, search <code>e e0</code> or{' '}
-          <code>EE</code>, then <strong>Select all</strong> → <strong>Delete selected</strong>.
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Deletes go to the GoDaddy database (<code>api.mywaitime.com</code>). Use{' '}
+          <strong>Select to delete</strong> for bulk removal — only patients still on the server will reload.
         </Alert>
         <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
           {!selectionMode ? (

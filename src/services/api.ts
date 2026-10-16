@@ -353,53 +353,41 @@ export const patientApi = {
       const baseUrl = getApiBaseUrl();
       const patientsUrl = `${baseUrl}${API_ENDPOINTS.PATIENTS}${id}/`;
       console.log(`Attempting to delete patient at: ${patientsUrl}`);
-      
+
       const response = await fetch(patientsUrl, {
         method: 'DELETE',
         mode: 'cors',
         credentials: 'omit',
         headers: {
-          'Accept': 'application/json',
+          Accept: 'application/json',
           'Content-Type': 'application/json',
-          'Origin': 'https://zub165.github.io'
         },
       });
 
-      // Handle 404 as success (patient already deleted or doesn't exist)
+      // Already gone on server
       if (response.status === 404) {
-        console.log('Patient not found (404) - treating as successfully deleted');
-        return { success: true, data: true, message: 'Patient deleted (was not found in database)' };
+        return { success: true, data: true, message: 'Patient already deleted from database' };
       }
 
       if (response.ok) {
         console.log('Successfully deleted patient from database');
         return { success: true, data: true, message: 'Patient deleted successfully from database' };
-      } else {
-        const errorText = await response.text();
-        console.error(`API returned ${response.status}:`, errorText);
-        
-        // For 404/500 errors, treat as success (patient doesn't exist)
-        if (response.status === 404 || response.status === 500) {
-          return { success: true, data: true, message: 'Patient deleted (was not found in database)' };
-        }
-        
-        throw new Error(`API returned ${response.status}: ${errorText}`);
       }
+
+      const errorText = await response.text();
+      console.error(`API returned ${response.status}:`, errorText);
+      return {
+        success: false,
+        data: false,
+        message: `Delete failed (${response.status}): ${errorText.slice(0, 200)}`,
+      };
     } catch (error) {
       console.warn('Delete request failed:', error);
-      
-      // For network errors or 404/500, treat as success (patient may not exist in backend)
       const errorMsg = error instanceof Error ? error.message : String(error);
-      if (errorMsg.includes('404') || errorMsg.includes('not found') || errorMsg.includes('500')) {
-        console.log('Patient not found in backend - treating as successfully deleted');
-        return { success: true, data: true, message: 'Patient deleted (was not found in database)' };
-      }
-      
-      // Return success anyway - UI will remove the patient
-      return { 
-        success: true, 
-        data: true, 
-        message: 'Patient removed from view (backend unavailable)' 
+      return {
+        success: false,
+        data: false,
+        message: `Delete failed — patient still on GoDaddy: ${errorMsg}`,
       };
     }
   },
