@@ -91,9 +91,7 @@
         var email = (document.getElementById('adminEmail').value || '').trim().toLowerCase();
         var pass = document.getElementById('adminPass').value || '';
         var err = document.getElementById('err');
-        var admins = cfg.admins || [
-          { email: 'zub165@yahoo.com', password: 'Bismilah786$' },
-        ];
+        var admins = cfg.admins || [];
         var ok = admins.some(function (a) {
           return (a.email || '').toLowerCase() === email && a.password === pass;
         });

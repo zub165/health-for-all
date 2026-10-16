@@ -47,3 +47,10 @@ app.*.map.json
 /android/key.properties
 /android/app/upload-keystore.jks
 android/build/
+
+# Secrets
+.env
+.env.local
+.env.*.local
+website/paypal-config.js
+
