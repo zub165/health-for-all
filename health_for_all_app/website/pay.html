@@ -58,6 +58,10 @@
         <input id="adminPass" type="password" placeholder="Admin password"/>
         <button type="button" class="btn secondary" id="adminBtn">Admin unlock</button>
         <p class="muted">Owner: zub165@yahoo.com · Privacy / Support stay free.</p>
+        <p class="ok" id="already" hidden>This browser is already unlocked.
+          <button type="button" id="lockAgain" class="btn secondary" style="margin-top:8px">Lock again (show paywall)</button>
+          <a class="btn" id="openApp" href="/health-for-all/app/" style="margin-top:8px;margin-left:8px">Open app</a>
+        </p>
       </div>
       <p class="muted" style="margin-top:16px">
         <a href="privacy.html">Privacy</a> ·
@@ -72,7 +76,21 @@
       var cfg = window.HFA_PAYPAL || {};
       var KEY = cfg.storageKey || 'healthforall_web_paid_v1';
       var APP = cfg.appPath || '/health-for-all/app/';
-      try { if (localStorage.getItem(KEY) === '1') { location.replace(APP); return; } } catch (e) {}
+      var params = new URLSearchParams(location.search);
+      // ?lock=1 clears unlock so paywall shows again
+      if (params.get('lock') === '1' || params.get('reset') === '1') {
+        try { localStorage.removeItem(KEY); } catch (e) {}
+        history.replaceState({}, '', location.pathname);
+      }
+      var alreadyPaid = false;
+      try { alreadyPaid = localStorage.getItem(KEY) === '1'; } catch (e) {}
+      // Stay on paywall page when already unlocked (do not auto-skip) so Lock again is available
+      if (alreadyPaid) {
+        var box = document.getElementById('already');
+        if (box) box.hidden = false;
+        var open = document.getElementById('openApp');
+        if (open) open.href = APP;
+      }
       document.getElementById('price').textContent = cfg.priceLabel || '$4.99';
       document.getElementById('paypal').href = cfg.paypalMeUrl || 'https://paypal.me/innovatorgeneration/4.99';
       function unlock() {
@@ -80,6 +98,12 @@
         document.getElementById('ok').hidden = false;
         location.href = APP;
       }
+      function lockAgain() {
+        try { localStorage.removeItem(KEY); } catch (e) {}
+        location.href = location.pathname;
+      }
+      var lockBtn = document.getElementById('lockAgain');
+      if (lockBtn) lockBtn.onclick = lockAgain;
       document.getElementById('unlock').onclick = function () {
         var code = (document.getElementById('code').value || '').trim();
         var codes = cfg.unlockCodes || [];
