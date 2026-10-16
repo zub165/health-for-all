@@ -6,11 +6,11 @@ import 'screens/ai_decisions_screen.dart';
 import 'screens/assessments_screen.dart';
 import 'screens/clinical_note_screen.dart';
 import 'screens/dashboard_screen.dart';
-import 'screens/doctor_login_screen.dart';
 import 'screens/home_hub_screen.dart';
 import 'screens/lab_screen.dart';
 import 'screens/patients_screen.dart';
 import 'screens/volunteers_screen.dart';
+import 'screens/welcome_auth_screen.dart';
 import 'services/app_session.dart';
 import 'services/hybrid_data_service.dart';
 import 'theme/app_theme.dart';
@@ -195,20 +195,28 @@ class _AuthGateState extends State<_AuthGate> {
       );
     }
     final session = _session;
-    if (session == null || !session.isStaff) {
-      if (session != null && !session.isStaff) {
-        return AppShell(
-          key: _shellKey,
-          doctorName: session.name,
-          onLogout: _logout,
-          items: _itemsFor(session),
-        );
-      }
-      return DoctorLoginScreen(
-        onLoggedIn: (name) async {
+    if (session == null) {
+      return WelcomeAuthScreen(
+        onStaffLoggedIn: (name) async {
           await AppSessionStore.instance.saveStaff(
             name: name,
             email: name.contains('@') ? name : 'zub165@yahoo.com',
+          );
+          await _restoreSession();
+        },
+        onPatientLoggedIn: ({required name, required email, id}) async {
+          await AppSessionStore.instance.savePatient(
+            name: name,
+            email: email,
+            id: id,
+          );
+          await _restoreSession();
+        },
+        onVolunteerLoggedIn: ({required name, required email, id}) async {
+          await AppSessionStore.instance.saveVolunteer(
+            name: name,
+            email: email,
+            id: id,
           );
           await _restoreSession();
         },
