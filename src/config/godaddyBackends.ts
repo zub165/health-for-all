@@ -28,6 +28,8 @@ export const GODADDY_BACKENDS = {
     categories: 'https://api.mywaitime.com/lab/test-categories/',
     orders: 'https://api.mywaitime.com/lab/test-orders/',
     results: 'https://api.mywaitime.com/lab/test-results/',
+    /** AI-assisted ICD-10 → lab/radiology recommendations */
+    icdRecommendations: 'https://api.mywaitime.com/lab/icd-recommendations/',
     authToken: 'https://api.mywaitime.com/lab/auth/token/',
     spaUi: 'https://api.mywaitime.com/lab-management/',
   },
