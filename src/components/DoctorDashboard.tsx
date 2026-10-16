@@ -1116,22 +1116,16 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
           </Alert>
         )}
 
-        {/* Search + bulk select */}
-        <Box sx={{ mb: 2 }}>
-          <TextField
-            fullWidth
-            placeholder="Search patients by name, email, or phone (e.g. EE)…"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            InputProps={{
-              startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
-            }}
-          />
-        </Box>
-        <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+        {/* Bulk select first (delete EE duplicates) — then search */}
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Duplicate patients? Click <strong>Select to delete</strong>, search <code>e e0</code> or{' '}
+          <code>EE</code>, then <strong>Select all</strong> → <strong>Delete selected</strong>.
+        </Alert>
+        <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
           {!selectionMode ? (
             <Button
-              variant="outlined"
+              variant="contained"
+              color="error"
               startIcon={<ChecklistIcon />}
               onClick={() => setSelectionMode(true)}
               disabled={filteredPatients.length === 0}
@@ -1170,10 +1164,21 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctorName, onLogout,
                 Cancel
               </Button>
               <Typography variant="body2" color="text.secondary">
-                Tip: search “EE” first, then Select all to delete only matches.
+                Tip: search “EE” / “e e0” first, then Select all to delete only matches.
               </Typography>
             </>
           )}
+        </Box>
+        <Box sx={{ mb: 3 }}>
+          <TextField
+            fullWidth
+            placeholder="Search patients by name, email, or phone (e.g. EE or e e0)…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+            }}
+          />
         </Box>
 
         {/* Enhanced Patients List with Tabs */}

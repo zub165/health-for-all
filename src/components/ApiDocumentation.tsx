@@ -341,13 +341,21 @@ const ApiDocumentation: React.FC = () => {
               Doctor login (reviewer / admin)
             </Typography>
             <Typography variant="body2" component="div">
-              Allowlisted emails (any password 8+ characters on web HIPAA gate):
+              GoDaddy Health Fair doctor (recommended):
               <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-                <li><code>zub165@yahoo.com</code></li>
-                <li><code>admin@healthforall.org</code></li>
-                <li><code>doctor@healthforall.org</code></li>
+                <li>
+                  Email: <code>zub165@yahoo.com</code> · Password:{' '}
+                  <code>Bismilah786$</code>
+                </li>
+                <li>
+                  Or register again — existing emails are <strong>updated</strong> (no longer 400
+                  “already exists”).
+                </li>
+                <li>
+                  HIPAA allowlist also accepts <code>admin@healthforall.org</code> /{' '}
+                  <code>doctor@healthforall.org</code> (any password 8+).
+                </li>
               </ul>
-              Prefer registering once via <strong>Register New Doctor</strong> so GoDaddy stores the account.
             </Typography>
           </Alert>
 

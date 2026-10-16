@@ -31,6 +31,8 @@ import {
   MedicalServices,
   Home as HomeIcon,
   VolunteerActivism,
+  Psychology,
+  Event,
 } from '@mui/icons-material';
 import SimplePatientRegistration from './components/SimplePatientRegistration';
 import AIHealthAssessment from './components/AIHealthAssessment';
@@ -72,13 +74,14 @@ const appTheme = createTheme({
   },
 });
 
+/** One destination per job — shared AppDataContext keeps patients/volunteers synced. */
 const navigationItems: { label: string; short: string; view: AppView; icon: React.ReactElement }[] = [
   { label: 'Home', short: 'Home', view: 'home', icon: <HomeIcon /> },
   { label: 'Patient Registration', short: 'Patients', view: 'patient', icon: <Person /> },
-  { label: 'AI Health Assessment', short: 'AI', view: 'ai-assessment', icon: <HealthAndSafety /> },
+  { label: 'AI Health Assessment', short: 'AI', view: 'ai-assessment', icon: <Psychology /> },
   { label: 'Doctor Dashboard', short: 'Doctor', view: 'doctor', icon: <Dashboard /> },
   { label: 'Volunteer Register', short: 'Volunteer', view: 'volunteer-register', icon: <VolunteerActivism /> },
-  { label: 'Health Fair 2025', short: 'Fair', view: 'health-fair-dashboard', icon: <HealthAndSafety /> },
+  { label: 'Health Fair Desk', short: 'Fair', view: 'health-fair-dashboard', icon: <Event /> },
   { label: 'Lab Management', short: 'Lab', view: 'lab-management', icon: <Science /> },
   { label: 'ICD-10 Diagnosis', short: 'ICD-10', view: 'icd10-diagnosis', icon: <MedicalServices /> },
   { label: 'API Status', short: 'API', view: 'api-status', icon: <Api /> },

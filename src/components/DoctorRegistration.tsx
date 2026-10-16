@@ -165,12 +165,65 @@ const DoctorRegistration: React.FC<DoctorRegistrationProps> = ({
           const errorData = await apiResponse.json().catch(() => ({}));
           const errorMessage = errorData.message || errorData.error || `HTTP ${apiResponse.status}: ${apiResponse.statusText}`;
           console.error('❌ Doctor registration failed:', apiResponse.status, errorMessage, errorData);
-          response = {
-            success: false,
-            error: errorMessage,
-            message: errorMessage,
-            data: null
-          };
+
+          // Account already on GoDaddy → try login with the password just entered (upsert path)
+          const alreadyExists = /already exists/i.test(String(errorMessage));
+          if (alreadyExists || apiResponse.status === 400) {
+            const isLocalhost =
+              window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const loginUrl = isLocalhost
+              ? 'http://api.mywaitime.com:3015/health-fair/doctors/login/'
+              : 'https://api.mywaitime.com/health-fair/doctors/login/';
+            try {
+              const loginRes = await fetch(loginUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                },
+                body: JSON.stringify({ email: data.email, password: data.password }),
+              });
+              const loginData = await loginRes.json().catch(() => ({}));
+              if (loginRes.ok && loginData.status === 'success' && loginData.data) {
+                response = {
+                  success: true,
+                  data: loginData.data,
+                  message:
+                    'Account already existed on GoDaddy — signed in and synced. You can use Doctor Dashboard.',
+                };
+                backendSuccess = true;
+                if (loginData.data.token) {
+                  localStorage.setItem('doctorToken', loginData.data.token);
+                  localStorage.setItem('doctorId', String(loginData.data.user_id));
+                  if (loginData.data.dashboard_id) {
+                    localStorage.setItem('dashboardId', loginData.data.dashboard_id);
+                  }
+                }
+              } else {
+                response = {
+                  success: false,
+                  error: errorMessage,
+                  message:
+                    `${errorMessage}. If this is your account, use Sign In with the same email/password (or ask admin to reset).`,
+                  data: null,
+                };
+              }
+            } catch {
+              response = {
+                success: false,
+                error: errorMessage,
+                message: errorMessage,
+                data: null,
+              };
+            }
+          } else {
+            response = {
+              success: false,
+              error: errorMessage,
+              message: errorMessage,
+              data: null,
+            };
+          }
         }
       } catch (apiError: any) {
         console.warn('⚠️ Backend registration failed, using local registration:', apiError);
