@@ -72,9 +72,13 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const response = await hybridPatientService.getPatients();
       if (!mountedRef.current) return;
-      setAllPatients(response.patients || []);
+      const next = response.patients || [];
+      // Never blank the UI on throttle/empty error if we already have patients
+      setAllPatients((prev) => (next.length === 0 && prev.length > 0 && (response.errors?.length || 0) > 0 ? prev : next));
       if (response.errors?.length) {
-        setError((prev) => prev || response.errors.join('; '));
+        setError(response.errors.join('; '));
+      } else {
+        setError(null);
       }
       setLastSynced(new Date());
     } catch (err) {

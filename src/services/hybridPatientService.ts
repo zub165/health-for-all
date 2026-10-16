@@ -46,6 +46,7 @@ interface HybridResponse {
 
 class HybridPatientService {
   private cacheKey = 'health_for_all_patients_cache';
+  private lastGoodKey = 'health_for_all_patients_last_good';
   private cacheExpiry = 5 * 60 * 1000; // 5 minutes
 
   /**
@@ -79,14 +80,18 @@ class HybridPatientService {
       console.warn('⚠️ Main API failed:', error);
     }
 
-    // 2. Cache only as offline fallback when Main API is unreachable
+    // 2. On throttle/network failure: keep last-good list (ignore 5-min expiry)
+    //    so a 429 does not wipe the Doctor Dashboard to "0 patients".
     if (!mainApiOk) {
       try {
-        const cachedPatients = this.getCachedPatients();
+        const cachedPatients = this.getCachedPatients({ ignoreExpiry: true });
         if (cachedPatients.length > 0) {
           allPatients = [...allPatients, ...cachedPatients];
           sources.cached = cachedPatients.length;
-          console.log('✅ Cached patients loaded (offline fallback):', cachedPatients.length);
+          errors.push(
+            'Showing last saved patient list — GoDaddy API was busy/throttled. Click Refresh shortly.'
+          );
+          console.log('✅ Last-good cache fallback:', cachedPatients.length);
         }
       } catch (error) {
         console.warn('⚠️ Cache failed:', error);
@@ -173,75 +178,104 @@ class HybridPatientService {
         ];
 
     for (const endpoint of endpoints) {
-      try {
-        console.log(`🔄 Trying Main API: ${endpoint}`);
-        
-        const response = await fetch(endpoint, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Origin': 'https://zub165.github.io'
-          },
-          // Add timeout
-          signal: AbortSignal.timeout(10000)
-        });
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          console.log(`🔄 Trying Main API: ${endpoint} (attempt ${attempt + 1})`);
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status === 'success' && data.data) {
-            const patients = data.data.map((patient: any) => {
-              const rawVolunteerInfo =
-                patient.volunteer_info ||
-                patient.volunteerInfo || {
-                  name: patient.volunteer_name,
-                  organization: patient.volunteer_organization,
-                  role: patient.volunteer_role,
-                  contact: patient.volunteer_contact
+          const response = await fetch(endpoint, {
+            method: 'GET',
+            headers: {
+              Accept: 'application/json',
+            },
+            signal: AbortSignal.timeout(15000),
+          });
+
+          // Django REST throttle — wait and retry instead of blanking the UI
+          if (response.status === 429) {
+            let waitSec = 5 + attempt * 5;
+            try {
+              const body = await response.json();
+              const detail = String(body?.errors?.detail || body?.detail || '');
+              const m = detail.match(/(\d+)\s*seconds?/i);
+              if (m) waitSec = Math.min(60, parseInt(m[1], 10) + 1);
+            } catch {
+              /* ignore */
+            }
+            console.warn(`⏳ Patients API throttled (429). Retry in ${waitSec}s…`);
+            await new Promise((r) => setTimeout(r, waitSec * 1000));
+            continue;
+          }
+
+          if (response.ok) {
+            const data = await response.json();
+            const rows = Array.isArray(data?.data)
+              ? data.data
+              : Array.isArray(data)
+                ? data
+                : null;
+            if ((data.status === 'success' || Array.isArray(data)) && rows) {
+              const patients = rows.map((patient: any) => {
+                const rawVolunteerInfo =
+                  patient.volunteer_info ||
+                  patient.volunteerInfo || {
+                    name: patient.volunteer_name,
+                    organization: patient.volunteer_organization,
+                    role: patient.volunteer_role,
+                    contact: patient.volunteer_contact,
+                  };
+
+                const hasVolunteerData =
+                  !!rawVolunteerInfo &&
+                  !!(
+                    rawVolunteerInfo.name ||
+                    rawVolunteerInfo.organization ||
+                    rawVolunteerInfo.role ||
+                    rawVolunteerInfo.contact
+                  );
+
+                const volunteerInfo = hasVolunteerData
+                  ? {
+                      name: rawVolunteerInfo.name || undefined,
+                      organization: rawVolunteerInfo.organization || undefined,
+                      role: rawVolunteerInfo.role || undefined,
+                      contact: rawVolunteerInfo.contact || undefined,
+                    }
+                  : undefined;
+
+                return {
+                  id: patient.id,
+                  first_name: patient.first_name,
+                  last_name: patient.last_name,
+                  full_name:
+                    patient.full_name ||
+                    `${patient.first_name || ''} ${patient.last_name || ''}`.trim(),
+                  email: patient.email,
+                  phone: patient.phone,
+                  age: patient.age || this.calculateAge(patient.date_of_birth),
+                  gender: patient.gender,
+                  health_score: patient.health_risk_score || patient.ai_health_score,
+                  source: 'main_api' as const,
+                  last_updated: new Date().toISOString(),
+                  volunteer_info: volunteerInfo,
                 };
+              });
 
-              const hasVolunteerData =
-                !!rawVolunteerInfo &&
-                !!(
-                  rawVolunteerInfo.name ||
-                  rawVolunteerInfo.organization ||
-                  rawVolunteerInfo.role ||
-                  rawVolunteerInfo.contact
-                );
-
-              const volunteerInfo = hasVolunteerData
-                ? {
-                    name: rawVolunteerInfo.name || undefined,
-                    organization: rawVolunteerInfo.organization || undefined,
-                    role: rawVolunteerInfo.role || undefined,
-                    contact: rawVolunteerInfo.contact || undefined
-                  }
-                : undefined;
-
-              return {
-                id: patient.id,
-                full_name: patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim(),
-                email: patient.email,
-                phone: patient.phone,
-                age: patient.age || this.calculateAge(patient.date_of_birth),
-                gender: patient.gender,
-                health_score: patient.health_risk_score || patient.ai_health_score,
-                source: 'main_api' as const,
-                last_updated: new Date().toISOString(),
-                volunteer_info: volunteerInfo
-              };
-            });
-            
-            console.log(`✅ Main API success: ${endpoint}`);
-            return patients;
+              console.log(`✅ Main API success: ${endpoint} (${patients.length})`);
+              return patients;
+            }
+          }
+          break; // non-429 failure for this endpoint — try next URL
+        } catch (error) {
+          console.warn(`⚠️ Main API failed for ${endpoint}:`, error);
+          if (attempt < 3) {
+            await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+            continue;
           }
         }
-      } catch (error) {
-        console.warn(`⚠️ Main API failed for ${endpoint}:`, error);
-        continue; // Try next endpoint
       }
     }
-    
-    throw new Error('All Main API endpoints failed');
+
+    throw new Error('All Main API endpoints failed (throttled or unreachable)');
   }
 
   /**
@@ -335,34 +369,30 @@ class HybridPatientService {
    * Get cached patients (fastest)
    * Filters out invalid placeholder entries
    */
-  private getCachedPatients(): PatientData[] {
+  private getCachedPatients(opts?: { ignoreExpiry?: boolean }): PatientData[] {
     try {
-      const cached = localStorage.getItem(this.cacheKey);
-      if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        const now = Date.now();
-        
-        // Check if cache is still valid
-        if (now - timestamp < this.cacheExpiry) {
-          // Filter out invalid placeholder entries
-          const validPatients = data.filter((patient: any) => {
-            const isPlaceholder = patient.full_name === 'Local Patient' ||
-                                patient.email === 'no-email@local.com' ||
-                                patient.phone === 'No phone' ||
-                                (!patient.email && !patient.phone);
-            return !isPlaceholder;
-          });
-          
-          if (validPatients.length < data.length) {
-            console.log(`ℹ️ Filtered out ${data.length - validPatients.length} placeholder entries from cache`);
-          }
-          
-          return validPatients.map((patient: any) => ({
-            ...patient,
-            source: 'cached' as const
-          }));
-        }
+      const preferLastGood = !!opts?.ignoreExpiry;
+      const raw = preferLastGood
+        ? localStorage.getItem(this.lastGoodKey) || localStorage.getItem(this.cacheKey)
+        : localStorage.getItem(this.cacheKey);
+      if (!raw) return [];
+      const { data, timestamp } = JSON.parse(raw);
+      if (!preferLastGood && Date.now() - (timestamp || 0) >= this.cacheExpiry) {
+        return [];
       }
+      const list = Array.isArray(data) ? data : [];
+      const validPatients = list.filter((patient: any) => {
+        const isPlaceholder =
+          patient.full_name === 'Local Patient' ||
+          patient.email === 'no-email@local.com' ||
+          patient.phone === 'No phone' ||
+          (!patient.email && !patient.phone);
+        return !isPlaceholder;
+      });
+      return validPatients.map((patient: any) => ({
+        ...patient,
+        source: 'cached' as const,
+      }));
     } catch (error) {
       console.warn('Cache read failed:', error);
     }
@@ -452,9 +482,11 @@ class HybridPatientService {
     try {
       const cacheData = {
         data: patients,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
       localStorage.setItem(this.cacheKey, JSON.stringify(cacheData));
+      // Always keep last-good snapshot for 429 / offline fallback (even if list is small)
+      localStorage.setItem(this.lastGoodKey, JSON.stringify(cacheData));
       console.log('💾 Cache updated with', patients.length, 'patients');
     } catch (error) {
       console.warn('Cache update failed:', error);
