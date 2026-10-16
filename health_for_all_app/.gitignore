@@ -54,3 +54,4 @@ android/build/
 .env.*.local
 website/paypal-config.js
 
+website/paypal-config.admin2.js
