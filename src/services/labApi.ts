@@ -4,11 +4,16 @@
  *
  * Radiology = Imaging category (XRAY / CT / MRI / US) on this same API.
  * Patient profile attach uses /api/lab-results/ via patientLabService (hybrid).
+ *
+ * Live catalog can be rate-limited (429). We cache successes and ship a
+ * VPS-exported fallback JSON so clinical-note Lab/MRI pickers keep working.
  */
 import { GODADDY_BACKENDS } from '../config/godaddyBackends';
+import fallbackCatalog from '../data/labCatalogFallback.json';
 
 const LAB_BASE_URL = GODADDY_BACKENDS.labManagement.httpsBase;
 const TOKEN_KEY = 'hfa_lab_jwt_access_v1';
+const CATALOG_CACHE_KEY = 'hfa_lab_catalog_cache_v1';
 
 export interface LabTest {
   id: string;
@@ -39,6 +44,7 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
   message?: string;
+  source?: 'live' | 'cache' | 'fallback';
 }
 
 function unwrapList<T>(payload: unknown): T[] {
@@ -49,6 +55,40 @@ function unwrapList<T>(payload: unknown): T[] {
     if (Array.isArray(obj.data)) return obj.data as T[];
   }
   return [];
+}
+
+function normalizeTests(rows: LabTest[]): LabTest[] {
+  return rows
+    .filter((t) => t && t.test_code && t.test_name)
+    .map((t) => ({
+      ...t,
+      id: String(t.id),
+      test_code: String(t.test_code).toUpperCase(),
+      is_active: t.is_active !== false,
+    }));
+}
+
+function readCachedCatalog(): LabTest[] {
+  try {
+    const raw = localStorage.getItem(CATALOG_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const rows = Array.isArray(parsed?.data) ? parsed.data : [];
+    return normalizeTests(rows);
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedCatalog(tests: LabTest[]): void {
+  try {
+    localStorage.setItem(
+      CATALOG_CACHE_KEY,
+      JSON.stringify({ data: tests, timestamp: Date.now() })
+    );
+  } catch {
+    /* ignore */
+  }
 }
 
 class LabApiService {
@@ -112,21 +152,69 @@ class LabApiService {
     }
   }
 
+  private fallbackTests(): LabTest[] {
+    const cached = readCachedCatalog();
+    if (cached.length > 0) return cached;
+    return normalizeTests(fallbackCatalog as LabTest[]);
+  }
+
+  /**
+   * Live catalog from GoDaddy /lab/tests/.
+   * On 429 / network failure → browser cache → VPS-exported fallback (includes MRI/CT/XRAY/US).
+   */
   async getTests(): Promise<ApiResponse<LabTest[]>> {
-    try {
-      const response = await fetch(`${this.baseURL}/tests/?page_size=500`, {
-        method: 'GET',
-        headers: this.headers(false),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      const data = await response.json();
-      return { success: true, data: unwrapList<LabTest>(data), message: 'Lab tests loaded' };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
+    const urls = [
+      `${this.baseURL}/tests/?page_size=500`,
+      `${this.baseURL}/tests/?page_size=200`,
+      `${this.baseURL}/tests/`,
+    ];
+
+    for (const url of urls) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: this.headers(false),
+            signal: AbortSignal.timeout(20000),
+          });
+
+          if (response.status === 429) {
+            await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+            continue;
+          }
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          const tests = normalizeTests(unwrapList<LabTest>(data));
+          if (tests.length > 0) {
+            writeCachedCatalog(tests);
+            return {
+              success: true,
+              data: tests,
+              message: `Lab tests loaded live (${tests.length})`,
+              source: 'live',
+            };
+          }
+        } catch (error) {
+          console.warn('labApi.getTests attempt failed:', url, error);
+        }
+      }
     }
+
+    const fallback = this.fallbackTests();
+    const fromCache = readCachedCatalog().length > 0;
+    return {
+      success: fallback.length > 0,
+      data: fallback,
+      message: fromCache
+        ? `Using cached lab catalog (${fallback.length}) — live API busy`
+        : `Using offline lab catalog (${fallback.length}) — live API unavailable`,
+      source: fromCache ? 'cache' : 'fallback',
+      error: fallback.length ? undefined : 'Lab catalog unavailable',
+    };
   }
 
   async getTestCategories(): Promise<ApiResponse<LabTestCategory[]>> {
@@ -141,6 +229,7 @@ class LabApiService {
         success: true,
         data: unwrapList<LabTestCategory>(data),
         message: 'Categories loaded',
+        source: 'live',
       };
     } catch (error) {
       return {

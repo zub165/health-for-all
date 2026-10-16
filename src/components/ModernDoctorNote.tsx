@@ -17,7 +17,6 @@ import {
   Tab,
   Tabs,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -203,7 +202,8 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
   const [labOrders, setLabOrders] = useState<PatientLabOrder[]>([]);
   const [labsLoading, setLabsLoading] = useState(false);
   const [catalog, setCatalog] = useState<LabTest[]>([]);
-  const [catalogStatus, setCatalogStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const [catalogStatus, setCatalogStatus] = useState<'idle' | 'ok' | 'fail' | 'cached'>('idle');
+  const [catalogSource, setCatalogSource] = useState('');
   const [labPick, setLabPick] = useState<LabTest | null>(null);
   const [radPick, setRadPick] = useState<LabTest | null>(null);
   const [orderPriority, setOrderPriority] = useState<'routine' | 'urgent' | 'stat'>('routine');
@@ -253,10 +253,13 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
 
   const loadCatalog = useCallback(async () => {
     setCatalogStatus('idle');
+    setCatalogSource('');
     const res = await labApi.getTests();
-    if (res.success && res.data) {
-      setCatalog(res.data.filter((t) => t.is_active !== false));
-      setCatalogStatus('ok');
+    const rows = (res.data || []).filter((t) => t.is_active !== false);
+    if (rows.length > 0) {
+      setCatalog(rows);
+      setCatalogSource(res.source || 'live');
+      setCatalogStatus(res.source === 'live' ? 'ok' : 'cached');
     } else {
       setCatalog([]);
       setCatalogStatus('fail');
@@ -988,12 +991,22 @@ const ModernDoctorNote: React.FC<ModernDoctorNoteProps> = ({
                   size="small"
                   label={
                     catalogStatus === 'ok'
-                      ? `${labCatalog.length} tests from API`
-                      : catalogStatus === 'fail'
-                        ? 'Catalog failed'
-                        : 'Loading…'
+                      ? `${labCatalog.length} tests · live GoDaddy`
+                      : catalogStatus === 'cached'
+                        ? `${labCatalog.length} tests · ${catalogSource || 'cached'}`
+                        : catalogStatus === 'fail'
+                          ? 'Catalog failed'
+                          : 'Loading…'
                   }
-                  color={catalogStatus === 'ok' ? 'success' : catalogStatus === 'fail' ? 'warning' : 'default'}
+                  color={
+                    catalogStatus === 'ok'
+                      ? 'success'
+                      : catalogStatus === 'cached'
+                        ? 'info'
+                        : catalogStatus === 'fail'
+                          ? 'warning'
+                          : 'default'
+                  }
                 />
                 {labsLoading && <CircularProgress size={16} />}
               </Stack>
