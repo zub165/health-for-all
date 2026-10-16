@@ -99868,7 +99868,7 @@ A.P1.prototype={
 E(a){var s=null,r=A.b([new A.jj("Patient Registration","Register & manage patients",B.LP,1,B.ag),new A.jj("AI Health Assessment","Risk scoring & insights",B.Ma,2,B.IR),new A.jj("Doctor Dashboard","Clinical notes \xb7 vitals \xb7 labs",B.h2,3,B.la),new A.jj("Volunteer Register","Fair day workforce",B.eJ,4,B.py),new A.jj("Health Fair Desk","Patients \xb7 volunteers \xb7 print",B.r8,5,B.lj),new A.jj("Lab Management","Orders & catalog",B.ra,6,B.pJ),new A.jj("ICD-10 Diagnosis","Search & auto-code",B.rj,7,B.fK),new A.jj("API Status","Live backend probes",B.mk,8,B.pV),new A.jj("API Docs","Endpoint cheat sheet",B.r6,9,B.pX)],t.Ct),q=A.cs(20),p=A.qr(A.cs(14),A.Po("assets/icons/icon.png",new A.abY(),B.fr,72,72),B.bB),o=this.d,n=t.p
 q=A.ee(s,A.bV(A.b([p,B.nU,A.bR(A.b3(A.b([B.a4T,B.cl,A.H(o.length!==0?"Doctor/admin: "+o+" \u2014 full patient & volunteer access":"Comprehensive Health Screening and Care",s,s,s,s,B.a1I,s,s)],n),B.P,B.l,B.m),1)],n),B.x,B.l,B.m,0,s),B.p,s,s,new A.cY(s,s,s,q,s,B.Ou,B.av),s,s,s,B.aw,s,s,s)
 o=A.p(a).ok.w
-return A.f5(A.b([q,B.D9,A.H("Modules",s,s,s,s,o==null?s:o.mD(B.bu),s,s),B.cl,A.H("Same modules as the React Health Fair web app \u2014 native Flutter.",s,s,s,s,A.bX(s,s,B.b3,s,s,s,s,s,s,s,s,s,s,s,s,s,s,!0,s,s,s,s,s,s,s,s),s,s),B.W,A.PJ(new A.abZ(this,r))],n),B.fV,s,!1)}}
+return A.f5(A.b([q,B.D9,A.H("Modules",s,s,s,s,o==null?s:o.mD(B.bu),s,s),B.cl,A.H("Same modules as the Health Fair web app.",s,s,s,s,A.bX(s,s,B.b3,s,s,s,s,s,s,s,s,s,s,s,s,s,s,!0,s,s,s,s,s,s,s,s),s,s),B.W,A.PJ(new A.abZ(this,r))],n),B.fV,s,!1)}}
 A.abY.prototype={
 $3(a,b,c){return B.MF},
 $S:75}
