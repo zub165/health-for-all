@@ -28,12 +28,22 @@ def g(key, default=""):
     return env.get(key, default)
 
 codes = [c.strip() for c in g("UNLOCK_CODES").split(",") if c.strip()]
-email = g("ADMIN_EMAIL")
 admins = []
 for i in range(1, 6):
+    email = g(f"ADMIN_EMAIL_{i}") or (g("ADMIN_EMAIL") if i == 1 else "")
     pw = g(f"ADMIN_PASSWORD_{i}")
     if email and pw:
-        admins.append({"email": email, "password": pw})
+        admins.append({"email": email.strip(), "password": pw})
+# Deduplicate identical pairs
+seen = set()
+uniq = []
+for a in admins:
+    key = (a["email"].lower(), a["password"])
+    if key in seen:
+        continue
+    seen.add(key)
+    uniq.append(a)
+admins = uniq
 
 cfg = {
     "paypalMeUrl": g("PAYPAL_ME_URL", "https://paypal.me/innovatorgeneration/4.99"),
