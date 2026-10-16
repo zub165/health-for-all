@@ -11,10 +11,10 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Health For All">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png?v=1.0.4">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png?v=1.0.6">
 
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png?v=1.0.4"/>
-  <link rel="icon" type="image/png" sizes="192x192" href="icons/Icon-192.png?v=1.0.4"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png?v=1.0.6"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/Icon-192.png?v=1.0.6"/>
 
   <title>Health For All</title>
   <link rel="manifest" href="manifest.json">
@@ -22,6 +22,15 @@
   (function () {
     var KEY = 'healthforall_web_paid_v1';
     try { if (localStorage.getItem(KEY) === '1') return; } catch (e) {}
+    // Patient & volunteer registration stay free (no paywall).
+    var q = (location.search || '').toLowerCase();
+    var h = (location.hash || '').toLowerCase();
+    if (/[?&]open=(patient|volunteer)\b/.test(q) ||
+        /[?&]role=(patient|volunteer)\b/.test(q) ||
+        h === '#patient' || h === '#volunteer' ||
+        h.indexOf('#patient') === 0 || h.indexOf('#volunteer') === 0) {
+      return;
+    }
     location.replace('/health-for-all/pay.html');
   })();
   </script>
