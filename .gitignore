@@ -8,6 +8,8 @@
 
 # Production
 /build
+health_for_all_app/build/
+health_for_all_app/.dart_tool/
 
 # Misc
 .DS_Store

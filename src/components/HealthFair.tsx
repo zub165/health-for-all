@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Container,
   Paper,
@@ -6,22 +6,28 @@ import {
   Box,
   Card,
   CardContent,
-  Grid,
-  Button,
   Chip,
 } from '@mui/material';
 import {
-  HealthAndSafety,
   People,
   Assessment,
   Email,
   Psychology,
-  LocalHospital,
 } from '@mui/icons-material';
+import ExportActions from './ExportActions';
 
 const HealthFair: React.FC = () => {
+  const contentRef = useRef<HTMLDivElement>(null);
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
+      <ExportActions
+        contentRef={contentRef}
+        fileName="Health_Fair_Overview"
+        downloadLabel="📥 Save Health Fair PDF"
+        printLabel="🖨️ Print Health Fair"
+      />
+      <Box ref={contentRef}>
       <Paper elevation={3} sx={{ p: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom align="center" color="primary">
           🏥 Health Fair 2025
@@ -99,6 +105,7 @@ const HealthFair: React.FC = () => {
           </Box>
         </Box>
       </Paper>
+      </Box>
     </Container>
   );
 };

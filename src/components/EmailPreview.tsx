@@ -13,13 +13,10 @@ import {
   List,
   ListItem,
   ListItemText,
-  Divider,
   Alert,
 } from '@mui/material';
 import {
   Email as EmailIcon,
-  Person as PersonIcon,
-  HealthAndSafety as HealthIcon,
   Assessment as AssessmentIcon,
 } from '@mui/icons-material';
 import { Patient } from '../types';
@@ -153,32 +150,55 @@ const EmailPreview: React.FC<EmailPreviewProps> = ({
               📧 Email Content Preview
             </Typography>
             <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 1 }}>
-              <Typography variant="body2" component="div">
-                <strong>Subject:</strong> Health Assessment Report - {patient.name || patient.full_name}<br/><br/>
-                
-                <strong>Dear {patient.name || patient.full_name},</strong><br/><br/>
-                
-                We have completed your comprehensive health assessment using our AI-powered analysis system. 
-                Here are your results:<br/><br/>
-                
-                <strong>Health Score:</strong> {healthScore}/100 ({getHealthScoreLabel(healthScore)})<br/><br/>
-                
+                <Typography variant="body2">
+                  <strong>Subject:</strong> Health Assessment Report - {patient.name || patient.full_name}
+                </Typography>
+                <br/>
+                <Typography variant="body2">
+                  <strong>Dear {patient.name || patient.full_name},</strong>
+                </Typography>
+                <br/>
+                <Typography variant="body2">
+                  We have completed your comprehensive health assessment using our AI-powered analysis system. 
+                  Here are your results:
+                </Typography>
+                <br/>
+                <Typography variant="body2">
+                  <strong>Health Score:</strong> {healthScore}/100 ({getHealthScoreLabel(healthScore)})
+                </Typography>
+                <br/>
                 {riskFactors.length > 0 && (
                   <>
-                    <strong>Risk Factors Identified:</strong><br/>
-                    {riskFactors.map((factor, index) => `• ${factor}`).join('\n')}<br/><br/>
+                    <Typography variant="body2">
+                      <strong>Risk Factors Identified:</strong>
+                    </Typography>
+                    <Typography variant="body2">
+                      {riskFactors.map((factor, index) => `• ${factor}`).join('\n')}
+                    </Typography>
+                    <br/>
                   </>
                 )}
                 
-                <strong>Recommendations:</strong><br/>
-                {recommendations.map((rec, index) => `• ${rec}`).join('\n')}<br/><br/>
-                
-                Please consult with your healthcare provider to discuss these findings and recommendations.<br/><br/>
-                
-                <strong>Best regards,</strong><br/>
-                Health for All Fair Team<br/>
-                <em>This report was generated on {new Date().toLocaleDateString()}</em>
-              </Typography>
+                <Typography variant="body2">
+                  <strong>Recommendations:</strong>
+                </Typography>
+                <Typography variant="body2">
+                  {recommendations.map((rec, index) => `• ${rec}`).join('\n')}
+                </Typography>
+                <br/>
+                <Typography variant="body2">
+                  Please consult with your healthcare provider to discuss these findings and recommendations.
+                </Typography>
+                <br/>
+                <Typography variant="body2">
+                  <strong>Best regards,</strong>
+                </Typography>
+                <Typography variant="body2">
+                  Health for All Fair Team
+                </Typography>
+                <Typography variant="body2">
+                  <em>This report was generated on {new Date().toLocaleDateString()}</em>
+                </Typography>
             </Box>
           </CardContent>
         </Card>

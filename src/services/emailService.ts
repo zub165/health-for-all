@@ -1,7 +1,12 @@
 // Email service for sending patient health summaries via GoDaddy SMTP
 import axios from 'axios';
 
-const EMAIL_API_BASE_URL = 'http://208.109.215.53:3015/api';
+// Production: HTTPS nginx (443). Avoid raw VPS IP — mixed content on GitHub Pages.
+const EMAIL_API_BASE_URL =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://api.mywaitime.com:3015/api'
+    : 'https://api.mywaitime.com/api';
 
 interface EmailData {
   to: string;

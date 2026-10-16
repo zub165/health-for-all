@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Container,
   Paper,
@@ -16,6 +16,10 @@ import {
   ListItem,
   ListItemText,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -24,21 +28,60 @@ import {
   Assessment as AssessmentIcon,
   Psychology as PsychologyIcon,
   Email as EmailIcon,
+  Print as PrintIcon,
 } from '@mui/icons-material';
 import { Patient } from '../types';
-import { patientApi } from '../services/api';
+import { PatientData } from '../services/hybridPatientService';
+import { useAppData } from '../context/AppDataContext';
 import EmailPreview from './EmailPreview';
+import HealthScoreRecommendationPrint from './HealthScoreRecommendationPrint';
+import ExportActions from './ExportActions';
 
 interface AIHealthAssessmentProps {
   onAssessmentComplete?: (patient: Patient, healthScore: number, riskFactors: string[], recommendations: string[]) => void;
   refreshTrigger?: number;
 }
 
+function hybridToPatient(patient: PatientData): Patient {
+  return {
+    id: patient.id,
+    name: patient.full_name,
+    full_name: patient.full_name,
+    first_name: patient.first_name,
+    last_name: patient.last_name,
+    email: patient.email,
+    phoneNumber: patient.phone,
+    phone: patient.phone,
+    age: patient.age,
+    gender: patient.gender,
+    address: patient.address,
+    bloodGroup: patient.blood_type,
+    blood_type: patient.blood_type,
+    pastMedicalHistory: patient.past_medical_history,
+    past_medical_history: patient.past_medical_history,
+    familyHistory: patient.family_history,
+    family_history: patient.family_history,
+    allergies: patient.allergies,
+    medicationList: patient.current_medications?.join(', '),
+    current_medications: patient.current_medications,
+    emergencyContact: patient.emergency_contact,
+    emergency_contact: patient.emergency_contact,
+    health_risk_score: patient.health_score,
+    registeredAt: patient.last_updated,
+    createdAt: patient.last_updated,
+    updatedAt: patient.last_updated,
+  };
+}
+
 const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentComplete, refreshTrigger }) => {
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const {
+    patients: hybridPatients,
+    loading: contextLoading,
+    error: contextError,
+    refreshPatients,
+  } = useAppData();
   const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -46,54 +89,76 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
   const [healthScore, setHealthScore] = useState<number | null>(null);
   const [riskFactors, setRiskFactors] = useState<string[]>([]);
   const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<'all' | 'django' | 'local'>('all');
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  const djangoPatients = useMemo(
+    () =>
+      hybridPatients
+        .filter((p) => p.source === 'main_api' || p.source === 'health_fair_api' || p.source === 'cached')
+        .map(hybridToPatient),
+    [hybridPatients]
+  );
+  const localPatients = useMemo(
+    () => hybridPatients.filter((p) => p.source === 'local_storage').map(hybridToPatient),
+    [hybridPatients]
+  );
+  const patients = useMemo(() => hybridPatients.map(hybridToPatient), [hybridPatients]);
+  const loading = contextLoading;
 
   useEffect(() => {
-    fetchPatients();
-  }, []);
+    if (contextError) setError(contextError);
+  }, [contextError]);
 
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
-      console.log('Refreshing patients in AI Health Assessment due to new registration...');
-      fetchPatients();
+      void refreshPatients();
     }
-  }, [refreshTrigger]);
+  }, [refreshTrigger, refreshPatients]);
 
   useEffect(() => {
-    const filtered = patients.filter(patient =>
-      (patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim())
-        .toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (patient.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (patient.phoneNumber || patient.phone || '').includes(searchTerm)
-    );
-    setFilteredPatients(filtered);
-  }, [patients, searchTerm]);
-
-  const fetchPatients = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await patientApi.getAll();
-      if (response.success && response.data) {
-        setPatients(response.data);
-      } else {
-        setError(response.message || 'Failed to fetch patients');
-      }
-    } catch (err) {
-      setError('Network error. Please check if the Django server is running.');
-    } finally {
-      setLoading(false);
+    let sourcePatients: Patient[] = [];
+    switch (activeTab) {
+      case 'django':
+        sourcePatients = djangoPatients;
+        break;
+      case 'local':
+        sourcePatients = localPatients;
+        break;
+      default:
+        sourcePatients = patients;
     }
-  };
+
+    const filtered = sourcePatients.filter((patient) => {
+      const name =
+        patient.name ||
+        patient.full_name ||
+        `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+      const email = patient.email || '';
+      const phone = patient.phoneNumber || patient.phone || '';
+      const q = searchTerm.toLowerCase();
+      return (
+        name.toLowerCase().includes(q) ||
+        email.toLowerCase().includes(q) ||
+        phone.includes(searchTerm)
+      );
+    });
+
+    setFilteredPatients(filtered);
+  }, [djangoPatients, localPatients, patients, searchTerm, activeTab]);
 
   const performAIAssessment = async (patient: Patient) => {
+    console.log('Starting AI assessment for patient:', patient);
     setSelectedPatient(patient);
     setProcessing(true);
     setHealthScore(null);
     setRiskFactors([]);
     setRecommendations([]);
     setCompleted(false);
+    setError(null);
 
     try {
       // Simulate AI processing time
@@ -123,11 +188,11 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
       }
 
       // Allergies factor
-      if (patient.allergies && patient.allergies.toLowerCase().includes('severe')) {
+      if (patient.allergies && typeof patient.allergies === 'string' && patient.allergies.toLowerCase().includes('severe')) {
         score -= 20;
         factors.push('Severe Allergies');
         recs.push('Allergy management plan needed');
-      } else if (patient.allergies && patient.allergies.length > 20) {
+      } else if (patient.allergies && typeof patient.allergies === 'string' && patient.allergies.length > 20) {
         score -= 10;
         factors.push('Multiple Allergies');
         recs.push('Allergy testing recommended');
@@ -169,7 +234,8 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
       onAssessmentComplete?.(patient, finalScore, factors, recs);
       
     } catch (err) {
-      setError('AI assessment failed. Please try again.');
+      console.error('AI assessment failed:', err);
+      setError(`AI assessment failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setProcessing(false);
     }
@@ -190,6 +256,13 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
+      <ExportActions
+        contentRef={contentRef}
+        fileName="AI_Health_Assessment"
+        downloadLabel="📥 Save Assessment PDF"
+        printLabel="🖨️ Print Assessment"
+      />
+      <Box ref={contentRef}>
       <Paper elevation={3} sx={{ p: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom align="center" color="primary">
         🧠 AI Health Assessment
@@ -205,8 +278,40 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
           </Alert>
         )}
 
+        {/* Data Source Tabs */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Data Sources
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            <Button
+              variant={activeTab === 'all' ? 'contained' : 'outlined'}
+              onClick={() => setActiveTab('all')}
+              size="small"
+            >
+              All Patients ({djangoPatients.length + localPatients.length})
+            </Button>
+            <Button
+              variant={activeTab === 'django' ? 'contained' : 'outlined'}
+              onClick={() => setActiveTab('django')}
+              size="small"
+              color="primary"
+            >
+              Django Backend ({djangoPatients.length})
+            </Button>
+            <Button
+              variant={activeTab === 'local' ? 'contained' : 'outlined'}
+              onClick={() => setActiveTab('local')}
+              size="small"
+              color="secondary"
+            >
+              Local Storage ({localPatients.length})
+            </Button>
+          </Box>
+        </Box>
+
         {/* Search Bar */}
-        <Box sx={{ mb: 4 }}>
+        <Box sx={{ mb: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
               <TextField
                 fullWidth
             variant="outlined"
@@ -217,6 +322,15 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
               startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
             }}
               />
+              {searchTerm && (
+                <Button 
+                  variant="outlined" 
+                  onClick={() => setSearchTerm('')}
+                  size="small"
+                >
+                  Clear
+                </Button>
+              )}
         </Box>
 
         {/* Loading State */}
@@ -225,43 +339,58 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
                   <CircularProgress />
             <Typography variant="body1" sx={{ ml: 2 }}>
               Loading patients...
-            </Typography>
+                </Typography>
                 </Box>
         )}
 
         {/* Patient List */}
         {!loading && !selectedPatient && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {filteredPatients.map((patient) => (
-              <Card key={patient.id} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'grey.50' } }}>
-                <CardContent>
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Box display="flex" alignItems="center">
-                      <PersonIcon sx={{ mr: 2, color: 'primary.main' }} />
-                      <Box>
-                        <Typography variant="h6">
-                          {patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown Patient'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          📧 {patient.email || 'No email'} | 📞 {patient.phoneNumber || patient.phone || 'No phone'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Age: {patient.age || 'Not specified'} | Blood Group: {patient.bloodGroup || 'Not specified'}
-                        </Typography>
+            {filteredPatients.map((patient) => {
+              // Determine data source
+              const isDjangoPatient = djangoPatients.some(p => p.id === patient.id);
+              const isLocalPatient = localPatients.some(p => p.id === patient.id);
+              const dataSource = isDjangoPatient ? 'Django' : isLocalPatient ? 'Local' : 'Unknown';
+              
+              return (
+                <Card key={patient.id} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'grey.50' } }}>
+                  <CardContent>
+                    <Box display="flex" alignItems="center" justifyContent="space-between">
+                      <Box display="flex" alignItems="center">
+                        <PersonIcon sx={{ mr: 2, color: 'primary.main' }} />
+                        <Box>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <Typography variant="h6">
+                              {patient.name || patient.full_name || `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown Patient'}
+                </Typography>
+                            <Chip 
+                              label={dataSource} 
+                              size="small" 
+                              color={isDjangoPatient ? 'primary' : 'secondary'}
+                              variant="outlined"
+                            />
+                  </Box>
+                          <Typography variant="body2" color="text.secondary">
+                            📧 {patient.email || 'No email'} | 📞 {patient.phoneNumber || patient.phone || 'No phone'}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Age: {patient.age || 'Not specified'} | Blood Group: {patient.bloodGroup || 'Not specified'}
+                          </Typography>
                   </Box>
                 </Box>
                   <Button
                     variant="contained"
-                      startIcon={<HealthIcon />}
-                      onClick={() => performAIAssessment(patient)}
-                      disabled={processing}
-                    >
-                      {processing ? 'Processing...' : 'Assess Health'}
+                        startIcon={<HealthIcon />}
+                        onClick={() => performAIAssessment(patient)}
+                        disabled={processing}
+                      >
+                        {processing ? 'Processing...' : 'Assess Health'}
                   </Button>
                 </Box>
               </CardContent>
             </Card>
-            ))}
+              );
+            })}
                 </Box>
         )}
 
@@ -318,7 +447,10 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
                     <List>
                   {recommendations.map((rec, index) => (
                         <ListItem key={index}>
-                      <ListItemText primary={`• ${rec}`} />
+                      <ListItemText 
+                        primary={`• ${rec}`}
+                        primaryTypographyProps={{ component: 'span' }}
+                      />
                         </ListItem>
                       ))}
                     </List>
@@ -326,7 +458,7 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
 
               <Divider sx={{ my: 2 }} />
               
-              <Box display="flex" gap={2} justifyContent="center">
+              <Box display="flex" gap={2} justifyContent="center" flexWrap="wrap">
                 <Button
                   variant="outlined"
                   onClick={() => {
@@ -338,6 +470,14 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
                   }}
                 >
                   Assess Another Patient
+                </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<PrintIcon />}
+                  onClick={() => setShowPrintDialog(true)}
+                >
+                  Print Report
                 </Button>
                 <Button
                   variant="contained"
@@ -386,7 +526,69 @@ const AIHealthAssessment: React.FC<AIHealthAssessmentProps> = ({ onAssessmentCom
           recommendations={recommendations}
           loading={emailLoading}
         />
+
+        {/* Print Dialog */}
+        <Dialog
+          open={showPrintDialog}
+          onClose={() => setShowPrintDialog(false)}
+          maxWidth="lg"
+          fullWidth
+          PaperProps={{
+            sx: {
+              '@media print': {
+                margin: 0,
+                maxWidth: '100%',
+                height: '100%',
+              },
+            },
+          }}
+        >
+          <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">Print Health Score & Recommendations</Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<PrintIcon />}
+                onClick={() => {
+                  window.print();
+                }}
+                sx={{ '@media print': { display: 'none' } }}
+              >
+                Print
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => setShowPrintDialog(false)}
+                sx={{ '@media print': { display: 'none' } }}
+              >
+                Close
+              </Button>
+            </Box>
+          </DialogTitle>
+          <DialogContent sx={{ '@media print': { p: 0 } }}>
+            <HealthScoreRecommendationPrint
+              patient={selectedPatient || {} as Patient}
+              healthScore={healthScore || undefined}
+              recommendations={recommendations.length > 0 ? recommendations.map((rec, index) => `${index + 1}. ${rec}`).join('\n\n') : undefined}
+              doctorName="AI Health Assessment"
+              date={new Date().toLocaleDateString()}
+            />
+          </DialogContent>
+          <DialogActions sx={{ '@media print': { display: 'none' } }}>
+            <Button onClick={() => setShowPrintDialog(false)}>Close</Button>
+            <Button
+              variant="contained"
+              startIcon={<PrintIcon />}
+              onClick={() => {
+                window.print();
+              }}
+            >
+              Print Now
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Paper>
+      </Box>
     </Container>
   );
 };

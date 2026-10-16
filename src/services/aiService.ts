@@ -29,7 +29,7 @@ export interface AIRecommendation {
 }
 
 class AIService {
-  private readonly API_BASE_URL = 'https://208.109.215.53/api/ai';
+  private readonly API_BASE_URL = 'https://api.mywaitime.com/api/ai';
 
   // AI-powered patient data extraction from minimal input
   async extractPatientData(minimalInput: {

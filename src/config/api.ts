@@ -1,10 +1,27 @@
 // API Configuration
 export const getApiBaseUrl = (): string => {
   // Check if we're in production (GitHub Pages) or development
-  if (window.location.hostname.includes('github.io')) {
-    return 'https://208.109.215.53'; // Your production API URL (HTTPS through Nginx reverse proxy)
-  }
-  return 'http://localhost:3015'; // Development API URL (HTTP for local)
+  const isGitHubPages = window.location.hostname.includes('github.io');
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  
+  // ✅ FIXED: Use default HTTPS port (443) where SSL is already configured
+  // Port 3015 doesn't have SSL configured, so we use the default HTTPS port
+  const baseUrl = isLocalhost 
+    ? 'http://api.mywaitime.com:3015'  // HTTP OK for localhost development
+    : 'https://api.mywaitime.com';      // HTTPS default port 443 (has valid SSL)
+  
+  console.log('API Configuration:', {
+    hostname: window.location.hostname,
+    isGitHubPages,
+    isLocalhost,
+    baseUrl,
+    fullUrl: `${baseUrl}/api/patients/`,
+    note: isLocalhost 
+      ? 'Using HTTP port 3015 for localhost' 
+      : 'Using HTTPS default port 443 (valid SSL certificate)'
+  });
+  
+  return baseUrl;
 };
 
 export const isDemoMode = (): boolean => {
@@ -19,6 +36,8 @@ export const API_ENDPOINTS = {
   RECOMMENDATIONS: '/api/recommendations/',
   HEALTH_CHECK: '/api/health/',
   AI_ASSESSMENT: '/api/ai/assessment/',
-  NUTRITION: '/api/nutrition/',
+  NUTRITION: '/api/nutrition/health/',
+  NUTRITION_HEALTH: '/api/nutrition/health/',
+  AI_HEALTH: '/api/ai/health/',
   LAB: '/api/lab/',
 } as const;

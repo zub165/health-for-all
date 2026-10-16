@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Container,
   Paper,
@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   Button,
-  Grid,
   Chip,
   Alert,
   CircularProgress,
@@ -15,232 +14,278 @@ import {
 import {
   CheckCircle,
   Error,
-  Warning,
   Refresh,
   Api,
   HealthAndSafety,
   Restaurant,
   Psychology,
   Science,
+  LocalHospital,
 } from '@mui/icons-material';
-import { getApiBaseUrl, API_ENDPOINTS } from '../config/api';
+import { getApiBaseUrl } from '../config/api';
+import ExportActions from './ExportActions';
 
 interface ApiStatus {
+  id: string;
   name: string;
-  status: 'online' | 'offline' | 'checking';
+  status: 'online' | 'offline' | 'checking' | 'not_deployed';
   description: string;
-  color: 'success' | 'error' | 'warning' | 'info' | 'secondary' | 'default';
+  endpoint: string;
   icon: React.ReactNode;
 }
 
+async function ping(url: string, timeoutMs = 8000): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      mode: 'cors',
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    // 200–499 means host answered (405/401 still = endpoint exists)
+    return response.status > 0 && response.status < 500;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const ApiStatusDashboard: React.FC = () => {
+  const contentRef = useRef<HTMLElement>(null);
+  const base = getApiBaseUrl(); // https://api.mywaitime.com in production
+
   const [apis, setApis] = useState<ApiStatus[]>([
     {
+      id: 'main',
       name: 'Main API',
       status: 'checking',
-      description: 'Core health system, hospitals, patients, authentication',
-      color: 'default',
+      description: 'Patients, doctors, vitals, assessments, auth',
+      endpoint: `${base}/api/health/`,
       icon: <HealthAndSafety />,
     },
     {
-      name: 'Nutrition API',
+      id: 'health-fair',
+      name: 'Health Fair',
       status: 'checking',
-      description: 'Food analysis, barcode scanning, halal checking',
-      color: 'success',
-      icon: <Restaurant />,
+      description: 'Fair dashboard, doctors login, fair patients',
+      endpoint: `${base}/health-fair/dashboard/`,
+      icon: <LocalHospital />,
     },
     {
-      name: 'AI Services',
-      status: 'checking',
-      description: 'ICD-10 validation, medication search, symptom analysis',
-      color: 'info',
-      icon: <Psychology />,
-    },
-    {
+      id: 'lab',
       name: 'Lab Management',
       status: 'checking',
-      description: 'Test orders, results, reports, lab analytics',
-      color: 'secondary',
+      description: 'Test catalog, orders, results at /lab/',
+      endpoint: `${base}/lab/tests/?page_size=1`,
       icon: <Science />,
     },
     {
-      name: 'Health Fair',
-      status: 'online',
-      description: 'Event management, rapid registration, vitals tracking',
-      color: 'warning',
-      icon: <HealthAndSafety />,
+      id: 'icd10',
+      name: 'ICD-10 (NIH)',
+      status: 'checking',
+      description: 'Clinical Tables ICD-10 search (external)',
+      endpoint:
+        'https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?sf=code,name&terms=I10',
+      icon: <Psychology />,
+    },
+    {
+      id: 'nutrition',
+      name: 'Nutrition API',
+      status: 'checking',
+      description: 'GoDaddy nutrition_track — use /api/nutrition/health/',
+      endpoint: `${base}/api/nutrition/health/`,
+      icon: <Restaurant />,
+    },
+    {
+      id: 'ai',
+      name: 'AI Services (/api/ai)',
+      status: 'checking',
+      description: 'GoDaddy ai_services — ICD-10/meds/symptoms + /health/',
+      endpoint: `${base}/api/ai/health/`,
+      icon: <Psychology />,
     },
   ]);
   const [lastChecked, setLastChecked] = useState<string>('');
   const [overallStatus, setOverallStatus] = useState<'online' | 'offline' | 'partial'>('partial');
+  const [checking, setChecking] = useState(false);
 
-  const checkApiStatus = async () => {
+  const checkApiStatus = useCallback(async () => {
+    setChecking(true);
     setLastChecked(new Date().toLocaleTimeString());
-    
-    // Simulate API status checking
-    const updatedApis = apis.map(api => {
-      if (api.name === 'Health Fair') {
-        return { ...api, status: 'online' as const };
+    setApis((prev) => prev.map((api) => ({ ...api, status: 'checking' as const })));
+
+    // AI: prefer /api/ai/health/ (ai_services), then known subpaths; not_deployed only if all fail
+    const aiCandidates = [
+      `${base}/api/ai/health/`,
+      `${base}/api/ai/icd10/search/?q=I10`,
+      `${base}/api/ai/assessment/`,
+    ];
+    let aiOk = false;
+    let aiUrl = aiCandidates[0];
+    for (const url of aiCandidates) {
+      // eslint-disable-next-line no-await-in-loop
+      const ok = await ping(url);
+      if (ok) {
+        aiOk = true;
+        aiUrl = url;
+        break;
       }
-      // Simulate random status for other APIs
-      const isOnline = Math.random() > 0.7;
-      return {
-        ...api,
-        status: isOnline ? 'online' as const : 'offline' as const,
-      };
-    });
-    
-    setApis(updatedApis);
-    
-    // Calculate overall status
-    const onlineCount = updatedApis.filter(api => api.status === 'online').length;
-    const totalCount = updatedApis.length;
-    
-    if (onlineCount === totalCount) {
-      setOverallStatus('online');
-    } else if (onlineCount === 0) {
-      setOverallStatus('offline');
-    } else {
-      setOverallStatus('partial');
     }
-  };
+
+    const results = await Promise.all(
+      [
+        { id: 'main', url: `${base}/api/health/`, required: true },
+        { id: 'health-fair', url: `${base}/health-fair/dashboard/`, required: true },
+        { id: 'lab', url: `${base}/lab/tests/?page_size=1`, required: true },
+        {
+          id: 'icd10',
+          url: 'https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?sf=code,name&terms=I10',
+          required: true,
+        },
+        { id: 'nutrition', url: `${base}/api/nutrition/health/`, required: false },
+      ].map(async (item) => {
+        const ok = await ping(item.url);
+        return { ...item, ok };
+      })
+    );
+
+    results.push({ id: 'ai', url: aiUrl, required: false, ok: aiOk });
+
+    setApis((prev) =>
+      prev.map((api) => {
+        const hit = results.find((r) => r.id === api.id);
+        if (!hit) return api;
+        if (!hit.required) {
+          return {
+            ...api,
+            status: hit.ok ? ('online' as const) : ('not_deployed' as const),
+            endpoint: hit.url,
+          };
+        }
+        return {
+          ...api,
+          status: hit.ok ? ('online' as const) : ('offline' as const),
+          endpoint: hit.url,
+        };
+      })
+    );
+
+    const required = results.filter((r) => r.required);
+    const onlineRequired = required.filter((r) => r.ok).length;
+    if (onlineRequired === required.length) setOverallStatus('online');
+    else if (onlineRequired === 0) setOverallStatus('offline');
+    else setOverallStatus('partial');
+
+    setChecking(false);
+  }, [base]);
 
   useEffect(() => {
     checkApiStatus();
-    const interval = setInterval(checkApiStatus, 30000); // Check every 30 seconds
+    const interval = setInterval(checkApiStatus, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [checkApiStatus]);
 
-  const getStatusIcon = (status: string) => {
+  const statusChip = (status: ApiStatus['status']) => {
     switch (status) {
       case 'online':
-        return <CheckCircle color="success" />;
+        return <Chip label="ONLINE" color="success" size="small" icon={<CheckCircle />} />;
       case 'offline':
-        return <Error color="error" />;
+        return <Chip label="OFFLINE" color="error" size="small" icon={<Error />} />;
+      case 'not_deployed':
+        return <Chip label="NOT DEPLOYED" color="warning" size="small" />;
       default:
-        return <CircularProgress size={20} />;
-    }
-  };
-
-  const getOverallStatusColor = () => {
-    switch (overallStatus) {
-      case 'online':
-        return 'success';
-      case 'offline':
-        return 'error';
-      default:
-        return 'warning';
-    }
-  };
-
-  const getOverallStatusText = () => {
-    switch (overallStatus) {
-      case 'online':
-        return 'All Systems Operational';
-      case 'offline':
-        return 'Major Outage';
-      default:
-        return 'Partial Service';
+        return <CircularProgress size={18} />;
     }
   };
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Paper elevation={3} sx={{ p: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom align="center" color="primary">
-          🔌 API Status Dashboard
-        </Typography>
-        
-        <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
-          Real-time monitoring of all Health For All API services
-        </Typography>
-
-        {/* Overall Status */}
-        <Alert 
-          severity={getOverallStatusColor() as any} 
-          sx={{ mb: 3 }}
-          icon={getOverallStatusColor() === 'success' ? <CheckCircle /> : <Error />}
-        >
-          <Typography variant="h6">
-            {getOverallStatusText()}
+      <ExportActions
+        contentRef={contentRef}
+        fileName="API_Status"
+        downloadLabel="Save API Status PDF"
+        printLabel="Print API Status"
+      />
+      <Box ref={contentRef}>
+        <Paper elevation={3} sx={{ p: 4 }}>
+          <Typography variant="h4" component="h1" gutterBottom align="center" color="primary">
+            API Status Dashboard
           </Typography>
-          <Typography variant="body2">
-            Last checked: {lastChecked}
+          <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3 }}>
+            Live checks against GoDaddy <code>api.mywaitime.com</code> (not random)
           </Typography>
-        </Alert>
 
-        {/* API Status Cards */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 3 }}>
-          {apis.map((api, index) => (
-            <Card key={index} elevation={2}>
-              <CardContent>
-                <Box display="flex" alignItems="center" mb={2}>
-                  {api.icon}
-                  <Typography variant="h6" sx={{ ml: 1 }}>
-                    {api.name}
+          <Alert
+            severity={
+              overallStatus === 'online' ? 'success' : overallStatus === 'offline' ? 'error' : 'warning'
+            }
+            sx={{ mb: 3 }}
+          >
+            <Typography variant="h6">
+              {overallStatus === 'online'
+                ? 'Core systems operational'
+                : overallStatus === 'offline'
+                  ? 'Core APIs unreachable'
+                  : 'Partial service'}
+            </Typography>
+            <Typography variant="body2">Last checked: {lastChecked}</Typography>
+          </Alert>
+
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 2 }}>
+            {apis.map((api) => (
+              <Card key={api.id} elevation={2}>
+                <CardContent>
+                  <Box display="flex" alignItems="center" mb={1}>
+                    {api.icon}
+                    <Typography variant="h6" sx={{ ml: 1 }}>
+                      {api.name}
+                    </Typography>
+                  </Box>
+                  <Box display="flex" alignItems="center" mb={1} gap={1}>
+                    {statusChip(api.status)}
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    {api.description}
                   </Typography>
-                </Box>
-                
-                <Box display="flex" alignItems="center" mb={2}>
-                  {getStatusIcon(api.status)}
-                  <Chip 
-                    label={api.status.toUpperCase()} 
-                    color={api.status === 'online' ? 'success' : api.status === 'offline' ? 'error' : 'default'}
-                    size="small"
-                    sx={{ ml: 1 }}
-                  />
-                </Box>
-                
-                <Typography variant="body2" color="text.secondary">
-                  {api.description}
-                </Typography>
-              </CardContent>
-            </Card>
-          ))}
-        </Box>
+                  <Typography
+                    variant="caption"
+                    component="div"
+                    sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
+                  >
+                    {api.endpoint}
+                  </Typography>
+                </CardContent>
+              </Card>
+            ))}
+          </Box>
 
-        {/* Quick Actions */}
-        <Box sx={{ mt: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            Quick Actions
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <Button
-              variant="outlined"
-              startIcon={<Refresh />}
+              variant="contained"
+              startIcon={checking ? <CircularProgress size={16} color="inherit" /> : <Refresh />}
               onClick={checkApiStatus}
+              disabled={checking}
             >
-              REFRESH ALL
+              Refresh all
             </Button>
-            <Button
-              variant="outlined"
-              startIcon={<Api />}
-              href="#api-docs"
-            >
-              API DOCUMENTATION
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<Api />}
-            >
-              API SCHEMA
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<HealthAndSafety />}
-            >
-              ANALYTICS
+            <Button variant="outlined" startIcon={<Api />} href="#/">
+              Back to modules (use top tabs)
             </Button>
           </Box>
-        </Box>
 
-        {/* API Base URL Info */}
-        <Box sx={{ mt: 4, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            <strong>API Base URL:</strong> {getApiBaseUrl()}
-          </Typography>
-        </Box>
-      </Paper>
+          <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              <strong>API Base URL:</strong> {base}
+              <br />
+              Production browsers must use HTTPS without <code>:3015</code>. Lab is under{' '}
+              <code>/lab/</code>, not <code>/api/lab/</code>.
+            </Typography>
+          </Box>
+        </Paper>
+      </Box>
     </Container>
   );
 };
